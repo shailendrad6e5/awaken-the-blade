@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en" class="is-loading">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#070707" />
+    <meta name="description" content="Awaken an ancient blade in a cinematic, scroll-driven dark-fantasy experience." />
+    <title>Forge — Awaken the Blade</title>
+    <style>
+      html, body { margin: 0; background: #070707; color: #eeeae2; }
+      html.is-loading { overflow: hidden; }
+      html.is-loading .site-shell { visibility: hidden; }
+      .site-loader { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; overflow: hidden; background: #070707; color: #eeeae2; font-family: Arial, sans-serif; }
+      .loader-brand { position: absolute; top: 9vh; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 600; letter-spacing: .42em; }
+      .loader-core { width: min(72vw, 520px); text-align: center; }
+      .loader-percent { display: block; font-family: Georgia, serif; font-size: clamp(4rem, 8vw, 8rem); font-weight: 500; line-height: .85; }
+      .loader-track { height: 1px; margin: 34px 0 22px; overflow: hidden; background: rgba(238,234,226,.13); }
+      .loader-track span { display: block; width: 100%; height: 100%; background: #bcc2c8; transform: scaleX(0); transform-origin: left; }
+      .loader-label { margin: 0; color: #70767b; font-size: 9px; font-weight: 600; letter-spacing: .28em; text-transform: uppercase; }
+      html:not(.is-loading):not(.is-transitioning) .site-loader { display: none; }
+    </style>
+    <script>
+      window.__forgeLoadingFailSafe = window.setTimeout(function () {
+        document.documentElement.classList.remove('is-loading', 'is-transitioning')
+      }, 15000)
+    </script>
+    <noscript><style>html.is-loading .site-shell { visibility: visible !important; } .site-loader { display: none !important; }</style></noscript>
+  </head>
+  <body>
+    <div class="site-loader" data-loader role="status" aria-label="Loading Forge experience">
+      <span class="loader-brand" data-loader-brand>FORGE</span>
+      <div class="loader-core">
+        <span class="loader-percent" data-loader-percent aria-hidden="true">00</span>
+        <div class="loader-track" aria-hidden="true"><span data-loader-bar></span></div>
+        <p class="loader-label" data-loader-label>Awakening steel</p>
+      </div>
+    </div>
+
+    <div class="site-shell" data-site-shell>
+      <a class="skip-link" href="#anatomy">Skip to the story</a>
+      <header class="site-header" data-header>
+      <a class="brand" href="#home" aria-label="Forge home">FORGE</a>
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">
+        <span class="menu-label">Menu</span>
+        <span class="menu-lines" aria-hidden="true"><i></i><i></i></span>
+      </button>
+      <nav class="site-nav" id="site-nav" aria-label="Primary navigation">
+        <a href="#home" data-nav-group="home" aria-current="page">Home</a>
+        <a href="#anatomy" data-nav-group="blade">The Blade</a>
+        <a href="#origin" data-nav-group="origin">Origins</a>
+        <a href="#legacy" data-nav-group="legacy">Legacy</a>
+      </nav>
+      <a class="nav-cta" href="#forge">Enter the Forge <span aria-hidden="true">↗</span></a>
+      </header>
+
+      <div class="weapon-stage" aria-hidden="true">
+        <canvas class="weapon-canvas"></canvas>
+        <div class="weapon-fallback">
+          <img class="fallback-sword" src="/assets/sword.png" alt="" draggable="false" />
+          <img class="fallback-sheath" src="/assets/sheath.png" alt="" draggable="false" />
+        </div>
+      </div>
+
+      <nav class="chapter-rail" aria-label="Cinematic chapters" data-chapter-rail>
+        <span class="chapter-rail__spine" aria-hidden="true"></span>
+        <a href="#home" data-chapter-link="awaken" data-nav-group="home" class="is-active"><i></i><b>01</b><span>Awaken</span></a>
+        <a href="#blade" data-chapter-link="draw" data-progress="0.2" data-nav-group="blade"><i></i><b>02</b><span>The Draw</span></a>
+        <a href="#anatomy" data-chapter-link="anatomy" data-nav-group="blade"><i></i><b>03</b><span>Anatomy</span></a>
+        <a href="#forge" data-chapter-link="forge"><i></i><b>04</b><span>The Forge</span></a>
+        <a href="#origin" data-chapter-link="origin" data-nav-group="origin"><i></i><b>05</b><span>Origin</span></a>
+        <a href="#inscription" data-chapter-link="inscription"><i></i><b>06</b><span>Inscription</span></a>
+        <a href="#legacy" data-chapter-link="legacy" data-nav-group="legacy"><i></i><b>07</b><span>Legacy</span></a>
+      </nav>
+
+      <main>
+      <section class="blade-sequence" id="home" aria-labelledby="hero-title">
+        <div class="hero" id="blade">
+          <div class="hero-content">
+            <p class="eyebrow hero-eyebrow">Forged beyond memory</p>
+            <h1 id="hero-title">
+              <span class="title-line"><span>Awaken</span></span>
+              <span class="title-line title-line--indent"><span>The Blade</span></span>
+            </h1>
+            <p class="hero-copy">An ancient weapon sleeps beneath the silence.<br />Draw it, and awaken what time tried to bury.</p>
+            <div class="hero-actions">
+              <button class="button-primary" type="button" data-draw-button><span>Draw the Blade</span><b aria-hidden="true">↓</b></button>
+              <a class="button-secondary" href="#origin">Discover its origin <span aria-hidden="true">→</span></a>
+            </div>
+          </div>
+
+          <div class="hero-atmosphere" aria-hidden="true"></div>
+          <div class="scene-curtain" aria-hidden="true"></div>
+          <div class="hero-transition" aria-hidden="true"></div>
+          <div class="blade-memory" aria-hidden="true">
+            <span class="blade-memory__line blade-memory__line--blade">The Blade</span>
+            <span class="blade-memory__line blade-memory__line--remembers">Remembers</span>
+            <small class="blade-memory__note">Steel forgets nothing.</small>
+          </div>
+          <div class="scroll-indicator" aria-hidden="true"><span>Scroll to draw</span><i></i></div>
+        </div>
+      </section>
+
+      <section class="chapter chapter--anatomy" id="anatomy" data-chapter="anatomy" aria-labelledby="anatomy-title">
+        <div class="chapter-frame anatomy-frame">
+          <div class="chapter-intro anatomy-intro">
+            <p class="archive-label">Archive / 03</p>
+            <h2 id="anatomy-title">Anatomy<br /><span>of a legend</span></h2>
+          </div>
+          <div class="anatomy-stage anatomy-stage--edge" data-anatomy-stage="edge">
+            <p class="archive-index">01 / The Edge</p>
+            <small class="anatomy-tech">Edge profile / 01</small>
+            <h3>Honed for a war<br />that history forgot.</h3>
+            <span class="annotation-line annotation-line--edge"><i></i></span>
+          </div>
+          <div class="anatomy-stage anatomy-stage--guard" data-anatomy-stage="guard">
+            <p class="archive-index">02 / The Guard</p>
+            <h3>Built to protect<br />the hand that wields it.</h3>
+            <span class="annotation-line annotation-line--guard"><i></i></span>
+          </div>
+          <div class="anatomy-stage anatomy-stage--grip" data-anatomy-stage="grip">
+            <p class="archive-index">03 / The Grip</p>
+            <h3>Bound for hands<br />that never returned.</h3>
+            <span class="annotation-line annotation-line--grip"><i></i></span>
+          </div>
+          <div class="archive-coordinates" aria-hidden="true"><span>OBJECT F-017</span><span>STEEL / UNKNOWN ERA</span></div>
+        </div>
+      </section>
+
+      <section class="chapter chapter--forge" id="forge" data-chapter="forge" aria-labelledby="forge-title">
+        <div class="chapter-frame forge-frame">
+          <div class="forge-copy">
+            <p class="archive-label">Archive / 04</p>
+            <h2 id="forge-title" class="masked-heading"><span>Born</span><span>in fire.</span></h2>
+            <div class="forge-body">
+              <p>Steel remembers every strike.</p>
+              <p>Every fold.<br />Every flame.<br />Every hand that shaped it.</p>
+            </div>
+          </div>
+          <p class="forge-caption">Temperature / Unrecorded<br />Method / Lost</p>
+        </div>
+      </section>
+
+      <section class="chapter chapter--origin" id="origin" data-chapter="origin" aria-labelledby="origin-title">
+        <div class="chapter-frame origin-frame">
+          <span class="origin-ghost" aria-hidden="true">Heirloom</span>
+          <div class="origin-rule origin-rule--vertical" aria-hidden="true"></div>
+          <div class="origin-rule origin-rule--horizontal" aria-hidden="true"></div>
+          <div class="origin-heading">
+            <p class="eyebrow">An heirloom of a forgotten age</p>
+            <h2 id="origin-title">Not every weapon<br />was made for war.</h2>
+          </div>
+          <div class="origin-copy">
+            <p>Some blades were forged as symbols of power.<br />Others carried the names of kingdoms.</p>
+            <p>This one carries something else.</p>
+            <p>A memory that refused to disappear.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="chapter chapter--inscription" id="inscription" data-chapter="inscription" aria-labelledby="inscription-title">
+        <div class="chapter-frame inscription-frame">
+          <div class="inscription-heading">
+            <p class="archive-label">Archive / 06</p>
+            <h2 id="inscription-title">What was<br />written<br />in steel?</h2>
+            <div class="inscription-copy">
+              <p>No kingdom claimed it.</p>
+              <p>No smith signed it.</p>
+              <p>Only three words survived.</p>
+            </div>
+          </div>
+          <div class="inscription-words" aria-label="Remember who drew me">
+            <span>Remember</span><span>Who</span><span>Drew me.</span>
+          </div>
+          <div class="archive-specs" aria-hidden="true"><span>Unknown origin</span><span>Archive ref / F-017</span><span>Date / Unrecorded</span></div>
+          <span class="inscription-rule" aria-hidden="true"></span>
+        </div>
+      </section>
+
+      <section class="chapter chapter--legacy" id="legacy" data-chapter="legacy" aria-labelledby="legacy-title">
+        <div class="chapter-frame legacy-frame">
+          <p class="archive-label">Archive / 07</p>
+          <h2 id="legacy-title"><span>Some weapons</span><span>win wars.</span><em>This one</em><em>survived them.</em></h2>
+          <div class="legacy-copy"><p>Kingdoms vanished.</p><p>Names became dust.</p><p>The blade remained.</p></div>
+          <span class="legacy-rule" aria-hidden="true"></span>
+        </div>
+      </section>
+
+      <section class="finale" id="finale" data-chapter="finale" aria-labelledby="finale-title">
+        <div class="finale-inner">
+          <p class="archive-label">Final / The awakened steel</p>
+          <h2 id="finale-title">The blade<br /><span>is awake.</span></h2>
+          <p>What was buried has been drawn again.</p>
+          <div class="finale-actions">
+            <button class="button-primary" type="button" data-return-sheath><span>Return it to the Sheath</span><b aria-hidden="true">↑</b></button>
+            <button class="button-secondary" type="button" data-begin-again>Begin again <span aria-hidden="true">↟</span></button>
+          </div>
+        </div>
+      </section>
+      </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
