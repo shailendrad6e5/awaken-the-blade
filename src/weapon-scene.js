@@ -545,6 +545,10 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
   const normalizedScale = 4.72 / longestDimension
   modelPivot.scale.setScalar(normalizedScale)
   modelPivot.position.set(1.62, -1.35, 0)
+  const restingTransform = {
+    rotation: modelPivot.rotation.clone(),
+    scale: modelPivot.scale.clone(),
+  }
   // The hero timeline retains sole ownership of modelPivot. All chapters after
   // the draw animate this outer wrapper so the proven Sword/Sheath rig and its
   // extraction transforms remain untouched.
@@ -745,18 +749,19 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
   }
 
   /* ── Resize handling ─────────────────────────────────── */
-  const resize = () => {
-    const width = canvas.clientWidth
-    const height = canvas.clientHeight
+  const resizeRenderer = () => {
+    const width = Math.max(canvas.clientWidth, 1)
+    const height = Math.max(canvas.clientHeight, 1)
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5)
+    renderer.setPixelRatio(pixelRatio)
     renderer.setSize(width, height, false)
-    emberUniforms.uPixelRatio.value = Math.min(window.devicePixelRatio, 1.5)
-    camera.aspect = width / Math.max(height, 1)
+    emberUniforms.uPixelRatio.value = pixelRatio
+    camera.aspect = width / height
     camera.updateProjectionMatrix()
-    modelPivot.position.x = camera.aspect > 1.15 ? 1.62 : 0.45
   }
-  const resizeObserver = new ResizeObserver(resize)
+  const resizeObserver = new ResizeObserver(resizeRenderer)
   resizeObserver.observe(canvas)
-  resize()
+  resizeRenderer()
   frameId = requestAnimationFrame(render)
 
   /* ── Public API ──────────────────────────────────────── */
@@ -767,6 +772,7 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
     cameraRig,
     chapterCameraRig,
     modelPivot,
+    restingTransform,
     chapterPivot,
     waveState,
     emberState,
@@ -775,6 +781,7 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
     payoff,
     cameraMotion,
     setExtractionLighting,
+    resize: resizeRenderer,
     lights: { key, rim, fill, engraving, accent, sheathFill, bladeSweep, ambient },
     targets: lightTargets,
     model: {

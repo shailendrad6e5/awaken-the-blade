@@ -6,9 +6,15 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { createWeaponScene } from './weapon-scene.js'
 
 gsap.registerPlugin(ScrollTrigger)
+// ScrollTrigger's built-in resize refresh can run while Chrome is still
+// changing the layout for docked DevTools. The debounced coordinator below
+// owns resize refreshes so every system settles against the same viewport.
+ScrollTrigger.config({ autoRefreshEvents: 'visibilitychange,DOMContentLoaded,load' })
 
 const MODEL_EXPECTED_BYTES = 35_070_476
 const MINIMUM_LOADER_TIME = 900
+const RESIZE_DEBOUNCE_MS = 180
+const COMPACT_VIEWPORT_MAX_WIDTH = 900
 const root = document.documentElement
 const header = document.querySelector('[data-header]')
 const menuToggle = document.querySelector('.menu-toggle')
@@ -33,6 +39,9 @@ let introTimeline
 let experienceStarted = false
 let activeMaster
 let activeChapters = []
+let resizeTimer = 0
+let resizeGeneration = 0
+let viewportMode = getViewportMode()
 
 const lenis = new Lenis({
   autoRaf: false,
@@ -47,6 +56,125 @@ lenis.on('scroll', ScrollTrigger.update)
 lenis.stop()
 gsap.ticker.add(updateLenis)
 gsap.ticker.lagSmoothing(0)
+
+function getViewportMode() {
+  return window.innerWidth > COMPACT_VIEWPORT_MAX_WIDTH ? 'desktop' : 'compact'
+}
+
+function getHeroRestingX() {
+  return getViewportMode() === 'desktop' ? 1.62 : 0.45
+}
+
+function getCurrentScrollPosition() {
+  const lenisScroll = Number(lenis.actualScroll)
+  return Number.isFinite(lenisScroll)
+    ? Math.max(0, lenisScroll)
+    : Math.max(0, window.scrollY || document.scrollingElement?.scrollTop || 0)
+}
+
+function waitForStableLayout() {
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+}
+
+function destroyScrollExperience() {
+  activeMaster?.scrollTrigger?.kill()
+  activeMaster?.kill()
+  activeMaster = undefined
+  activeChapters.forEach((timeline) => {
+    timeline.scrollTrigger?.kill()
+    timeline.kill()
+  })
+  activeChapters = []
+  heroTrigger = undefined
+}
+
+function rebuildScrollExperienceForViewport() {
+  if (!activeWeapon) return
+  destroyScrollExperience()
+  activeMedia?.revert()
+  activeMedia = undefined
+
+  const activateScrollExperience = setupExperience(activeWeapon)
+  if (experienceStarted) introTimeline?.progress(1)
+  activateScrollExperience()
+}
+
+function getProgressAtScroll(trigger, scrollPosition) {
+  const distance = trigger.end - trigger.start
+  if (!Number.isFinite(distance) || distance <= 0) return 0
+  return gsap.utils.clamp(0, 1, (scrollPosition - trigger.start) / distance)
+}
+
+function renderTimelinesAtCurrentScroll() {
+  const scrollPosition = getCurrentScrollPosition()
+  const timelines = [activeMaster, ...activeChapters].filter(Boolean)
+  timelines.forEach((timeline) => {
+    const trigger = timeline.scrollTrigger
+    if (!trigger) return
+    // A refresh updates trigger measurements but may not re-render a scrubbed
+    // timeline when the scroll value itself did not change. Render its current
+    // progress once so DOM, 3D and chapter values share one source of truth.
+    timeline.progress(getProgressAtScroll(trigger, scrollPosition), false)
+  })
+
+  if (heroTrigger && scrollPosition >= heroTrigger.start && scrollPosition <= heroTrigger.end) {
+    setActiveChapter(getProgressAtScroll(heroTrigger, scrollPosition) < 0.1 ? 'awaken' : 'draw')
+    return
+  }
+
+  const currentChapter = activeChapters
+    .map((timeline) => timeline.scrollTrigger)
+    .filter(Boolean)
+    .filter((trigger) => scrollPosition >= trigger.start)
+    .sort((a, b) => b.start - a.start)[0]
+
+  const chapter = currentChapter?.vars.id?.replace('chapter-', '')
+  if (chapter) setActiveChapter(chapter)
+}
+
+async function synchronizeResize(generation) {
+  if (!activeWeapon || !experienceStarted || generation !== resizeGeneration) return
+
+  const preservedScroll = getCurrentScrollPosition()
+  const nextViewportMode = getViewportMode()
+  const crossedBreakpoint = nextViewportMode !== viewportMode
+
+  // Resize the WebGL surface immediately, then wait for CSS and DevTools to
+  // finish their own layout work before recalculating scroll measurements.
+  activeWeapon.resize()
+  lenis.resize()
+  await waitForStableLayout()
+  if (generation !== resizeGeneration) return
+
+  if (crossedBreakpoint) rebuildScrollExperienceForViewport()
+  viewportMode = nextViewportMode
+
+  activeWeapon.resize()
+  lenis.resize()
+  await waitForStableLayout()
+  if (generation !== resizeGeneration) return
+
+  ScrollTrigger.refresh()
+  // Lenis 1.3 recalculates its dimensions during resize. Restore the exact
+  // native scroll coordinate after ScrollTrigger has inserted/removed pin
+  // spacing, without smoothing or moving to another chapter.
+  lenis.resize()
+  lenis.scrollTo(Math.min(preservedScroll, lenis.limit), { immediate: true, force: true })
+  ScrollTrigger.update()
+  renderTimelinesAtCurrentScroll()
+}
+
+function scheduleResizeSynchronization() {
+  window.clearTimeout(resizeTimer)
+  const generation = ++resizeGeneration
+  resizeTimer = window.setTimeout(() => {
+    resizeTimer = 0
+    void synchronizeResize(generation)
+  }, RESIZE_DEBOUNCE_MS)
+}
+
+window.addEventListener('resize', scheduleResizeSynchronization, { passive: true })
+window.visualViewport?.addEventListener('resize', scheduleResizeSynchronization, { passive: true })
 
 function createLoaderController() {
   const startedAt = performance.now()
@@ -152,6 +280,16 @@ function getHeroDestination(progress = 0) {
 }
 
 function setActiveChapter(chapter) {
+  // Chapter timelines own their own content. Once the hero has been left,
+  // explicitly clear its persistent layers so a resize/refresh cannot leave
+  // THE BLADE REMEMBERS over a later chapter.
+  if (chapter !== 'awaken' && chapter !== 'draw') {
+    gsap.set([
+      '.hero-eyebrow', '.hero-copy', '.hero-actions', '.title-line > span',
+      '.scroll-indicator', '.hero-transition', '.blade-memory',
+    ], { autoAlpha: 0 })
+  }
+
   chapterLinks.forEach((link) => {
     const active = link.dataset.chapterLink === chapter
     link.classList.toggle('is-active', active)
@@ -281,8 +419,20 @@ function createMasterTimeline(weapon) {
     z: weapon.modelPivot.rotation.z,
   }
   const baseScale = weapon.modelPivot.scale.clone()
+  const syncExtractionPresentation = () => {
+    const reveal = gsap.utils.clamp(0, 1, (weapon.draw.progress - 0.82) / 0.06)
+    weapon.setExtractionLighting(weapon.draw.progress)
+    gsap.set('.blade-memory', { autoAlpha: reveal })
+    gsap.set('.blade-memory__line', {
+      clipPath: `inset(${(1 - reveal) * 105}% 0 0 0)`,
+      y: 24 * (1 - reveal),
+    })
+    gsap.set('.blade-memory__note', { autoAlpha: reveal, y: 10 * (1 - reveal) })
+  }
+
   const timeline = gsap.timeline({
     defaults: { ease: 'none' },
+    onUpdate: syncExtractionPresentation,
     scrollTrigger: {
       id: 'weapon-cinematic',
       trigger: '.blade-sequence',
@@ -295,20 +445,9 @@ function createMasterTimeline(weapon) {
       refreshPriority: 10,
       invalidateOnRefresh: true,
       onUpdate: (self) => setActiveChapter(self.progress < 0.1 ? 'awaken' : 'draw'),
-      onEnterBack: () => setActiveChapter('draw'),
+      onEnterBack: (self) => setActiveChapter(self.progress < 0.1 ? 'awaken' : 'draw'),
     },
   })
-
-  const syncExtractionPresentation = () => {
-    const reveal = gsap.utils.clamp(0, 1, (weapon.draw.progress - 0.82) / 0.06)
-    weapon.setExtractionLighting(weapon.draw.progress)
-    gsap.set('.blade-memory', { autoAlpha: reveal })
-    gsap.set('.blade-memory__line', {
-      clipPath: `inset(${(1 - reveal) * 105}% 0 0 0)`,
-      y: 24 * (1 - reveal),
-    })
-    gsap.set('.blade-memory__note', { autoAlpha: reveal, y: 10 * (1 - reveal) })
-  }
 
   const drawSegment = (progress, duration, position, ease) => {
     timeline.to(weapon.draw, {
@@ -364,6 +503,7 @@ function createMasterTimeline(weapon) {
     .to('.hero-transition', { autoAlpha: 0.62, duration: 0.08, ease: 'power2.in' }, 0.92)
 
   heroTrigger = timeline.scrollTrigger
+  syncExtractionPresentation()
   return timeline
 }
 
@@ -545,6 +685,7 @@ function createChapterExperience(weapon) {
   const finale = gsap.timeline({
     defaults: { ease: 'none' },
     scrollTrigger: {
+      id: 'chapter-finale',
       trigger: finaleSection,
       start: () => finaleSection.offsetTop - window.innerHeight * 0.82,
       end: () => finaleSection.offsetTop + finaleSection.offsetHeight - window.innerHeight,
@@ -567,8 +708,8 @@ function createChapterExperience(weapon) {
 }
 
 function setupExperience(weapon) {
-  const restingRotation = weapon.modelPivot.rotation.clone()
-  const restingScale = weapon.modelPivot.scale.clone()
+  const restingRotation = weapon.restingTransform.rotation.clone()
+  const restingScale = weapon.restingTransform.scale.clone()
   const resetCinematicState = () => {
     gsap.set([
       '.hero-content', '.hero-eyebrow', '.hero-copy', '.hero-actions', '.title-line > span',
@@ -581,7 +722,7 @@ function setupExperience(weapon) {
     weapon.cameraMotion.yaw = 0
     weapon.cameraMotion.pitch = 0
     weapon.camera.position.set(0, 0, 11.5)
-    weapon.modelPivot.position.set(window.innerWidth > 900 ? 1.62 : 0.45, -1.35, 0)
+    weapon.modelPivot.position.set(getHeroRestingX(), -1.35, 0)
     weapon.modelPivot.rotation.copy(restingRotation)
     weapon.modelPivot.scale.copy(restingScale)
   }
@@ -666,6 +807,8 @@ async function boot() {
     lenis.resize()
     ScrollTrigger.refresh(true)
     ScrollTrigger.update()
+    renderTimelinesAtCurrentScroll()
+    viewportMode = getViewportMode()
     if (!resumeFromScroll) introTimeline?.play(0)
   } catch (error) {
     console.error('[FORGE] Unable to initialize weapon scene', error)
@@ -684,15 +827,13 @@ boot()
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
+    window.clearTimeout(resizeTimer)
+    window.removeEventListener('resize', scheduleResizeSynchronization)
+    window.visualViewport?.removeEventListener('resize', scheduleResizeSynchronization)
     activeLoader?.destroy()
     activeMedia?.revert()
     activeWeapon?.dispose()
-    activeMaster?.kill()
-    activeChapters.forEach((timeline) => {
-      timeline.scrollTrigger?.kill()
-      timeline.kill()
-    })
-    ScrollTrigger.getById('weapon-cinematic')?.kill()
+    destroyScrollExperience()
     gsap.ticker.remove(updateLenis)
     lenis.destroy()
   })
