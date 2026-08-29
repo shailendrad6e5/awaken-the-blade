@@ -185,6 +185,26 @@ h1 { margin: 20px 0 30px; font-family: 'Cormorant Garamond', serif; font-size: c
 .archive-specs { position: absolute; right: 5vw; bottom: 5vh; display: flex; gap: 26px; color: #484c50; font-size: .48rem; letter-spacing: .18em; text-transform: uppercase; }
 .inscription-rule { position: absolute; top: 14%; right: 4vw; width: 1px; height: 72%; background: linear-gradient(transparent, rgba(140,149,158,.34), transparent); transform: scaleY(0); }
 
+/* The Wielder — a recovered memory, served as scrubbed local video only. */
+.chapter--wielder { min-height: 1040vh; background: #030303; }
+.wielder-frame { background: transparent; }
+.wielder-frame::before, .wielder-frame::after { display: none; }
+.wielder-stage { position: absolute; inset: 0; overflow: hidden; background: #030303; opacity: 0; visibility: hidden; }
+.wielder-clip { position: absolute; inset: 0; margin: 0; opacity: 0; will-change: opacity; }
+.wielder-clip img, .wielder-clip video { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
+.wielder-clip img { z-index: 0; opacity: 1; transform: scale(1.015); filter: brightness(.72) saturate(.82); transition: opacity 160ms linear; }
+.wielder-clip video { z-index: 1; opacity: 0; transition: opacity 160ms linear; }
+.wielder-clip.is-ready video { opacity: 1; }
+.wielder-clip.is-ready img { opacity: 0; }
+.wielder-dissolve { position: absolute; inset: 0; z-index: 3; background: #020202; opacity: 0; pointer-events: none; }
+.wielder-copy { position: absolute; top: 17%; left: clamp(82px, 9vw, 150px); z-index: 5; width: min(68vw, 760px); color: var(--text-primary); opacity: 0; pointer-events: none; will-change: opacity, transform; }
+.wielder-copy h2 { margin-top: 18px; font-size: clamp(5.2rem, 10.5vw, 10.8rem); line-height: .7; letter-spacing: -.065em; }
+.wielder-copy h2 span { margin-left: clamp(34px, 8vw, 130px); color: var(--steel-light); }
+.wielder-copy > p:last-child { margin: 20px 0 0; font: 500 clamp(2.25rem, 4.5vw, 4.8rem)/.88 'Cormorant Garamond', serif; letter-spacing: -.04em; text-transform: uppercase; }
+.wielder-copy--right { top: auto; right: clamp(74px, 8vw, 140px); bottom: 15%; left: auto; width: min(42vw, 600px); text-align: right; }
+.wielder-copy--draw { top: auto; bottom: 15%; }
+.wielder-copy .archive-index { color: rgba(210,198,174,.8); }
+
 /* Legacy */
 .chapter--legacy { min-height: 360vh; }
 .legacy-frame::before { background: radial-gradient(ellipse at 58% 46%, rgba(120,136,147,.05), rgba(7,7,7,.22) 42%, rgba(7,7,7,.9) 100%); }
@@ -225,12 +245,15 @@ h1 { margin: 20px 0 30px; font-family: 'Cormorant Garamond', serif; font-size: c
   .hero-atmosphere { left: 58%; width: 78vw; }
   .hero-actions { align-items: flex-start; flex-direction: column; gap: 10px; }
   .chapter { min-height: 260vh; }
+  .chapter--wielder { min-height: 1040vh; }
   .chapter-frame::before { background: linear-gradient(to bottom, rgba(7,7,7,.78), rgba(7,7,7,.18) 48%, rgba(7,7,7,.84)); }
   .anatomy-intro, .anatomy-stage, .forge-copy, .origin-heading, .inscription-heading { left: 7vw; width: 76vw; }
   .anatomy-stage--guard { right: 7vw; left: auto; }
   .forge-body { top: 70%; right: auto; left: 0; width: 70vw; }
   .origin-copy { right: 7vw; bottom: 10%; width: 58vw; }
   .inscription-words { right: 6vw; top: 52%; }
+  .wielder-copy { left: 7vw; width: 76vw; }
+  .wielder-copy--right { right: 7vw; left: auto; width: 70vw; }
   .legacy-frame h2 em { margin-left: 24vw; }
   .legacy-frame h2 em:last-child { margin-left: 30vw; }
 }
@@ -274,6 +297,11 @@ h1 { margin: 20px 0 30px; font-family: 'Cormorant Garamond', serif; font-size: c
   .origin-copy { width: 78vw; }
   .inscription-heading h2 { font-size: 14vw; }
   .inscription-words { top: 56%; font-size: 13vw; }
+  .chapter--wielder { min-height: 860vh; }
+  .wielder-copy { top: 15%; left: 6vw; width: 84vw; }
+  .wielder-copy h2 { font-size: 19vw; }
+  .wielder-copy--right, .wielder-copy--draw { top: auto; right: 6vw; bottom: 13%; left: auto; width: 78vw; }
+  .wielder-copy > p:last-child { font-size: 10vw; }
   .legacy-frame h2 { top: 22%; left: 6vw; width: 88vw; font-size: 12vw; }
   .legacy-frame h2 em { margin-left: 10vw; }
   .legacy-frame h2 em:last-child { margin-left: 18vw; }

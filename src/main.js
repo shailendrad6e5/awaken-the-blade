@@ -41,7 +41,10 @@ let activeMaster
 let activeChapters = []
 let resizeTimer = 0
 let resizeGeneration = 0
+let pendingResizeAnchor
 let viewportMode = getViewportMode()
+let wielderController
+const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
 
 const lenis = new Lenis({
   autoRaf: false,
@@ -66,10 +69,12 @@ function getHeroRestingX() {
 }
 
 function getCurrentScrollPosition() {
+  const nativeScroll = Number(window.scrollY || document.scrollingElement?.scrollTop)
+  if (Number.isFinite(nativeScroll)) return Math.max(0, nativeScroll)
   const lenisScroll = Number(lenis.actualScroll)
   return Number.isFinite(lenisScroll)
     ? Math.max(0, lenisScroll)
-    : Math.max(0, window.scrollY || document.scrollingElement?.scrollTop || 0)
+    : 0
 }
 
 function waitForStableLayout() {
@@ -86,6 +91,7 @@ function destroyScrollExperience() {
   })
   activeChapters = []
   heroTrigger = undefined
+  wielderController?.destroyPrefetch()
 }
 
 function rebuildScrollExperienceForViewport() {
@@ -105,6 +111,34 @@ function getProgressAtScroll(trigger, scrollPosition) {
   return gsap.utils.clamp(0, 1, (scrollPosition - trigger.start) / distance)
 }
 
+function captureScrollAnchor() {
+  const scrollPosition = getCurrentScrollPosition()
+  const activeChapterId = header.dataset.chapter
+  const timeline = activeChapterId === 'awaken' || activeChapterId === 'draw'
+    ? activeMaster
+    : activeChapters.find(({ scrollTrigger }) => scrollTrigger?.vars.id === `chapter-${activeChapterId}`)
+  const trigger = timeline?.scrollTrigger
+  if (!trigger) return { scrollPosition }
+  return {
+    scrollPosition,
+    triggerId: activeChapterId === 'awaken' || activeChapterId === 'draw'
+      ? 'hero'
+      : trigger.vars.id,
+    progress: gsap.utils.clamp(0, 1, timeline.progress()),
+  }
+}
+
+function resolveScrollAnchor(anchor) {
+  const timeline = anchor.triggerId === 'hero'
+    ? activeMaster
+    : activeChapters.find(({ scrollTrigger }) => scrollTrigger?.vars.id === anchor.triggerId)
+  const trigger = timeline?.scrollTrigger
+  if (trigger && Number.isFinite(anchor.progress)) {
+    return trigger.start + (trigger.end - trigger.start) * anchor.progress
+  }
+  return anchor.scrollPosition
+}
+
 function renderTimelinesAtCurrentScroll() {
   const scrollPosition = getCurrentScrollPosition()
   const timelines = [activeMaster, ...activeChapters].filter(Boolean)
@@ -116,6 +150,13 @@ function renderTimelinesAtCurrentScroll() {
     // progress once so DOM, 3D and chapter values share one source of truth.
     timeline.progress(getProgressAtScroll(trigger, scrollPosition), false)
   })
+
+  const wielderTrigger = activeChapters
+    .map((timeline) => timeline.scrollTrigger)
+    .find((trigger) => trigger?.vars.id === 'chapter-wielder')
+  if (wielderTrigger) {
+    wielderController?.setProgress(getProgressAtScroll(wielderTrigger, scrollPosition))
+  }
 
   if (heroTrigger && scrollPosition >= heroTrigger.start && scrollPosition <= heroTrigger.end) {
     setActiveChapter(getProgressAtScroll(heroTrigger, scrollPosition) < 0.1 ? 'awaken' : 'draw')
@@ -135,7 +176,7 @@ function renderTimelinesAtCurrentScroll() {
 async function synchronizeResize(generation) {
   if (!activeWeapon || !experienceStarted || generation !== resizeGeneration) return
 
-  const preservedScroll = getCurrentScrollPosition()
+  const preservedAnchor = pendingResizeAnchor ?? captureScrollAnchor()
   const nextViewportMode = getViewportMode()
   const crossedBreakpoint = nextViewportMode !== viewportMode
 
@@ -155,16 +196,19 @@ async function synchronizeResize(generation) {
   if (generation !== resizeGeneration) return
 
   ScrollTrigger.refresh()
-  // Lenis 1.3 recalculates its dimensions during resize. Restore the exact
-  // native scroll coordinate after ScrollTrigger has inserted/removed pin
-  // spacing, without smoothing or moving to another chapter.
+  // Restore the same chapter-owned timeline position after CSS breakpoints
+  // and pin spacing have changed the document's absolute coordinates.
   lenis.resize()
-  lenis.scrollTo(Math.min(preservedScroll, lenis.limit), { immediate: true, force: true })
+  const destination = resolveScrollAnchor(preservedAnchor)
+  lenis.scrollTo(Math.min(destination, lenis.limit), { immediate: true, force: true })
   ScrollTrigger.update()
   renderTimelinesAtCurrentScroll()
+  pendingResizeAnchor = undefined
 }
 
 function scheduleResizeSynchronization() {
+  if (!activeWeapon || !experienceStarted) return
+  pendingResizeAnchor ??= captureScrollAnchor()
   window.clearTimeout(resizeTimer)
   const generation = ++resizeGeneration
   resizeTimer = window.setTimeout(() => {
@@ -175,6 +219,22 @@ function scheduleResizeSynchronization() {
 
 window.addEventListener('resize', scheduleResizeSynchronization, { passive: true })
 window.visualViewport?.addEventListener('resize', scheduleResizeSynchronization, { passive: true })
+
+async function synchronizeMotionPreference() {
+  if (!activeWeapon || !experienceStarted) return
+  const preservedAnchor = captureScrollAnchor()
+  rebuildScrollExperienceForViewport()
+  await waitForStableLayout()
+  lenis.resize()
+  ScrollTrigger.refresh()
+  const destination = resolveScrollAnchor(preservedAnchor)
+  lenis.scrollTo(Math.min(destination, lenis.limit), { immediate: true, force: true })
+  ScrollTrigger.update()
+  renderTimelinesAtCurrentScroll()
+}
+
+const onMotionPreferenceChange = () => { void synchronizeMotionPreference() }
+motionPreference.addEventListener('change', onMotionPreferenceChange)
 
 function createLoaderController() {
   const startedAt = performance.now()
@@ -280,6 +340,8 @@ function getHeroDestination(progress = 0) {
 }
 
 function setActiveChapter(chapter) {
+  if (chapter !== 'wielder') gsap.set('.weapon-stage', { autoAlpha: 1 })
+
   // Chapter timelines own their own content. Once the hero has been left,
   // explicitly clear its persistent layers so a resize/refresh cannot leave
   // THE BLADE REMEMBERS over a later chapter.
@@ -303,6 +365,7 @@ function setActiveChapter(chapter) {
     anatomy: 'blade',
     origin: 'origin',
     inscription: 'origin',
+    wielder: 'origin',
     legacy: 'legacy',
     finale: 'legacy',
   }[chapter]
@@ -338,6 +401,7 @@ document.querySelectorAll('a[href^="#"]:not(.skip-link)').forEach((link) => {
       forge: 0.16,
       origin: 0.24,
       inscription: 0.22,
+      wielder: 0.035,
       legacy: 0.2,
     }[target.dataset.chapter] ?? 0.1
     const chapterOffset = target.classList.contains('chapter')
@@ -511,10 +575,236 @@ function THREE_DEGREES(value) {
   return value * (Math.PI / 180)
 }
 
+// Adapted from the scroll-world scrub-engine's useful pieces: nearby lazy
+// loading and seek coalescing. ScrollTrigger owns progress so Lenis remains
+// this experience's only scroll source.
+function createWielderController() {
+  const section = document.querySelector('.chapter--wielder')
+  const stage = document.querySelector('.wielder-stage')
+  const dissolve = document.querySelector('.wielder-dissolve')
+  const clips = [...document.querySelectorAll('[data-wielder-clip]')].map((element) => ({
+    element,
+    video: element.querySelector('video'),
+    loading: false,
+    metadataReady: false,
+    dataReady: false,
+    drawable: false,
+    desiredProgress: 0,
+    shouldSeek: false,
+    objectUrl: '',
+    abortController: undefined,
+    paintFrame: 0,
+  }))
+  const copies = [...document.querySelectorAll('[data-wielder-copy]')]
+  const weights = [1, 1, 1, 1, 1, 1, 0.42]
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0)
+  let prefetchTrigger
+  let latestProgress = 0
+  let seekFrame = 0
+  let disposed = false
+
+  const resolveSegment = (progress) => {
+    const scaled = gsap.utils.clamp(0, 0.999999, progress) * totalWeight
+    let offset = 0
+    for (let index = 0; index < weights.length; index += 1) {
+      const end = offset + weights[index]
+      if (scaled < end) return { index, local: (scaled - offset) / weights[index] }
+      offset = end
+    }
+    return { index: weights.length - 1, local: 1 }
+  }
+
+  const revealPaintedFrame = (clip) => {
+    if (clip.drawable || !clip.dataReady) return
+    clip.drawable = true
+    clip.element.classList.add('is-ready')
+    clip.video.removeAttribute('poster')
+  }
+
+  const schedulePaintReveal = (clip) => {
+    if (clip.drawable || clip.paintFrame) return
+    const reveal = () => {
+      clip.paintFrame = requestAnimationFrame(() => {
+        clip.paintFrame = 0
+        revealPaintedFrame(clip)
+      })
+    }
+    if (typeof clip.video.requestVideoFrameCallback === 'function') {
+      clip.video.requestVideoFrameCallback(reveal)
+      window.setTimeout(() => { if (!clip.drawable) reveal() }, 180)
+    } else {
+      reveal()
+    }
+  }
+
+  const load = async (index) => {
+    const clip = clips[index]
+    if (!clip || clip.metadataReady || clip.loading || disposed) return
+    clip.loading = true
+    const { video } = clip
+    clip.abortController = new AbortController()
+
+    video.addEventListener('loadedmetadata', () => {
+      clip.metadataReady = Number.isFinite(video.duration) && video.duration > 0
+      clip.loading = false
+    }, { once: true })
+    video.addEventListener('loadeddata', () => {
+      clip.dataReady = true
+      video.pause()
+      if (clip.shouldSeek && Math.abs(video.currentTime) < 0.018 && clip.desiredProgress < 0.002) {
+        schedulePaintReveal(clip)
+      }
+    }, { once: true })
+    video.addEventListener('seeked', () => schedulePaintReveal(clip))
+    video.addEventListener('error', () => {
+      clip.loading = false
+      clip.element.classList.add('has-error')
+    }, { once: true })
+
+    try {
+      const response = await fetch(video.dataset.src, {
+        cache: 'force-cache',
+        signal: clip.abortController.signal,
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const blob = await response.blob()
+      if (!blob.type.startsWith('video/')) throw new Error(`Unexpected MIME type: ${blob.type || 'unknown'}`)
+      clip.objectUrl = URL.createObjectURL(blob)
+      video.preload = 'auto'
+      video.src = clip.objectUrl
+      video.load()
+    } catch (error) {
+      clip.loading = false
+      if (error.name !== 'AbortError') {
+        clip.element.classList.add('has-error')
+        console.error(`[WIELDER] Unable to load ${video.dataset.src}`, error)
+      }
+    }
+  }
+
+  const pumpSeeks = () => {
+    if (disposed) return
+    clips.forEach((clip) => {
+      const { video } = clip
+      if (!clip.shouldSeek || !clip.metadataReady || video.seeking || !Number.isFinite(video.duration)) return
+      const maximum = Math.max(0, video.duration - (1 / 24))
+      const target = gsap.utils.clamp(0, maximum, clip.desiredProgress * video.duration)
+      if (Math.abs(video.currentTime - target) <= 0.018) {
+        if (clip.dataReady) schedulePaintReveal(clip)
+        return
+      }
+      try { video.currentTime = target } catch { /* metadata can briefly invalidate during source attach */ }
+    })
+    seekFrame = requestAnimationFrame(pumpSeeks)
+  }
+
+  const updateCopies = (segment) => {
+    const ranges = [
+      [0, 0.04, 0.32], [0, 0.38, 0.82], [1, 0.2, 0.8], [2, 0.2, 0.8],
+      [3, 0.2, 0.8], [4, 0.2, 0.8], [5, 0.26, 0.84],
+    ]
+    copies.forEach((copy, copyIndex) => {
+      const [clipIndex, start, end] = ranges[copyIndex]
+      const local = segment.index === clipIndex ? segment.local : -1
+      const fade = 0.12
+      const opacity = local < start || local > end
+        ? 0
+        : Math.min(1, (local - start) / fade, (end - local) / fade)
+      copy.style.opacity = opacity.toFixed(3)
+      copy.style.transform = `translateY(${((0.5 - Math.max(0, local)) * 18).toFixed(1)}px)`
+    })
+  }
+
+  const setProgress = (progress) => {
+    latestProgress = gsap.utils.clamp(0, 1, progress)
+    const segment = resolveSegment(latestProgress)
+    const crossfade = 0.022
+    const withinLoadRange = getCurrentScrollPosition() > section.offsetTop - window.innerHeight * 2.2
+      && getCurrentScrollPosition() < section.offsetTop + section.offsetHeight + window.innerHeight
+
+    clips.forEach((clip, index) => {
+      let opacity = index === segment.index ? 1 : 0
+      const deliberateMemoryBreak = segment.index >= 5 && index >= 5
+      if (!deliberateMemoryBreak && index === segment.index - 1 && segment.local < crossfade) opacity = 1 - segment.local / crossfade
+      if (!deliberateMemoryBreak && index === segment.index + 1 && segment.local > 1 - crossfade) opacity = (segment.local - (1 - crossfade)) / crossfade
+      clip.element.style.opacity = opacity.toFixed(3)
+      clip.shouldSeek = opacity > 0.001 || Math.abs(index - segment.index) <= 1
+      clip.desiredProgress = index === segment.index ? segment.local : (index < segment.index ? 0.999 : 0)
+      if (withinLoadRange && clip.shouldSeek) {
+        void load(index)
+      }
+    })
+
+    updateCopies(segment)
+    let blackout = 0
+    let handoff = 0
+    let stageOpacity = 1
+    if (segment.index === 5 && segment.local > 0.86) {
+      blackout = gsap.utils.clamp(0, 0.94, (segment.local - 0.86) / 0.14 * 0.94)
+    }
+    if (segment.index === 6) {
+      const entryBlack = gsap.utils.clamp(0, 0.94, (0.18 - segment.local) / 0.18 * 0.94)
+      const exitBlack = segment.local < 0.9
+        ? gsap.utils.clamp(0, 0.94, (segment.local - 0.76) / 0.14 * 0.94)
+        : gsap.utils.clamp(0, 0.94, (1 - segment.local) / 0.1 * 0.94)
+      blackout = Math.max(entryBlack, exitBlack)
+      handoff = gsap.utils.clamp(0, 1, (segment.local - 0.86) / 0.12)
+      stageOpacity = 1 - gsap.utils.clamp(0, 1, (segment.local - 0.9) / 0.1)
+    }
+    stage.style.opacity = stageOpacity.toFixed(3)
+    stage.style.visibility = latestProgress >= 0.999 ? 'hidden' : 'visible'
+    dissolve.style.opacity = blackout.toFixed(3)
+    // Timelines are also rendered at progress 0 during refreshes. Only alter
+    // the persistent WebGL stage while this chapter actually owns the viewport.
+    if (header.dataset.chapter === 'wielder') gsap.set('.weapon-stage', { autoAlpha: handoff })
+  }
+
+  const onMotionChange = () => setProgress(latestProgress)
+  motionPreference.addEventListener('change', onMotionChange)
+  seekFrame = requestAnimationFrame(pumpSeeks)
+
+  return {
+    section,
+    setProgress,
+    installPrefetch() {
+      prefetchTrigger?.kill()
+      prefetchTrigger = ScrollTrigger.create({
+        trigger: section,
+        start: 'top bottom+=120%',
+        once: true,
+        onEnter: () => { void load(0); void load(1) },
+      })
+    },
+    destroyPrefetch() {
+      prefetchTrigger?.kill()
+      prefetchTrigger = undefined
+    },
+    refresh() {
+      setProgress(latestProgress)
+    },
+    dispose() {
+      disposed = true
+      prefetchTrigger?.kill()
+      cancelAnimationFrame(seekFrame)
+      motionPreference.removeEventListener('change', onMotionChange)
+      clips.forEach((clip) => {
+        clip.abortController?.abort()
+        if (clip.paintFrame) cancelAnimationFrame(clip.paintFrame)
+        clip.video.pause()
+        clip.video.removeAttribute('src')
+        clip.video.load()
+        if (clip.objectUrl) URL.revokeObjectURL(clip.objectUrl)
+      })
+    },
+  }
+}
+
 function createChapterExperience(weapon) {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const motion = reduced ? 0.32 : 1
   const chapterTimelines = []
+  wielderController ??= createWielderController()
+  wielderController.installPrefetch()
 
   const createTimeline = (selector, chapter, previous) => {
     const section = document.querySelector(selector)
@@ -662,11 +952,33 @@ function createChapterExperience(weapon) {
     .to(weapon.lights.engraving, { intensity: weapon.targets.engraving * 1.25, duration: 0.42 }, 0.16)
     .to(weapon.lights.bladeSweep, { intensity: weapon.targets.bladeSweep * 0.34, duration: 0.4 }, 0.24)
 
-  const legacy = createTimeline('.chapter--legacy', 'legacy', 'inscription')
+  const wielderProgress = { value: 0 }
+  const wielder = createTimeline('.chapter--wielder', 'wielder', 'inscription')
+  wielder
+    .to(wielderProgress, {
+      value: 1,
+      duration: 1,
+      onUpdate: () => wielderController.setProgress(wielderProgress.value),
+    }, 0)
+    // Presentation-only handoff: the extraction rig itself is never touched.
+    .to(weapon.chapterPivot.position, { x: 0.54 * motion, y: 0.7 * motion, duration: 0.015 }, 0.985)
+    .to(weapon.chapterPivot.scale, { x: 1.28, y: 1.28, z: 1.28, duration: 0.015 }, 0.985)
+    .to(weapon.chapterPivot.rotation, { y: THREE_DEGREES(5.5 * motion), z: THREE_DEGREES(220 * motion), duration: 0.015 }, 0.985)
+    .to(weapon.chapterCameraRig.position, { x: -0.1 * motion, y: 0.06 * motion, z: -0.96, duration: 0.015 }, 0.985)
+    .to(weapon.chapterCameraRig.rotation, { y: THREE_DEGREES(5.8 * motion), x: THREE_DEGREES(-0.5 * motion), duration: 0.015 }, 0.985)
+    .to(weapon.lights.rim, { intensity: weapon.targets.rim * 1.28, duration: 0.015 }, 0.985)
+    .to(weapon.lights.key, { intensity: weapon.targets.key * 1.05, duration: 0.015 }, 0.985)
+    .to(weapon.lights.accent, { intensity: weapon.targets.accent * 0.72, duration: 0.015 }, 0.985)
+
+  const legacy = createTimeline('.chapter--legacy', 'legacy', 'wielder')
   legacy
-    .to(weapon.chapterPivot.position, { x: 0.54 * motion, y: -0.7 * motion, duration: 0.76, ease: 'power1.inOut' }, 0)
+    .fromTo(weapon.chapterPivot.position,
+      { x: 0.54 * motion, y: 0.7 * motion },
+      { x: 0.54 * motion, y: -0.7 * motion, duration: 0.76, ease: 'power1.inOut', immediateRender: false }, 0)
     .to(weapon.chapterPivot.scale, { x: 1.28, y: 1.28, z: 1.28, duration: 0.76, ease: 'power1.inOut' }, 0)
-    .to(weapon.chapterPivot.rotation, { y: THREE_DEGREES(5.5 * motion), z: THREE_DEGREES(-1.8 * motion), duration: 0.76, ease: 'power1.inOut' }, 0)
+    .fromTo(weapon.chapterPivot.rotation,
+      { y: THREE_DEGREES(5.5 * motion), z: THREE_DEGREES(220 * motion) },
+      { y: THREE_DEGREES(5.5 * motion), z: THREE_DEGREES(-1.8 * motion), duration: 0.76, ease: 'power1.inOut', immediateRender: false }, 0)
     .to(weapon.chapterCameraRig.position, { x: -0.1 * motion, y: 0.06 * motion, z: -0.96, duration: 0.76, ease: 'power1.inOut' }, 0)
     .to(weapon.chapterCameraRig.rotation, { y: THREE_DEGREES(5.8 * motion), x: THREE_DEGREES(-0.5 * motion), duration: 0.76, ease: 'sine.inOut' }, 0)
     .to('.legacy-frame > .archive-label', { autoAlpha: 1, duration: 0.1 }, 0.05)
@@ -714,7 +1026,7 @@ function setupExperience(weapon) {
     gsap.set([
       '.hero-content', '.hero-eyebrow', '.hero-copy', '.hero-actions', '.title-line > span',
       '.scroll-indicator', '.hero-atmosphere', '.hero-transition', '.blade-memory',
-      '.blade-memory__line', '.blade-memory__note',
+      '.blade-memory__line', '.blade-memory__note', '.weapon-stage',
     ], { clearProps: 'all' })
     weapon.draw.progress = 0
     weapon.sheathMotion.progress = 0
@@ -757,8 +1069,10 @@ function showStaticChapters() {
   gsap.set([
     '.anatomy-intro', '.forge-body', '.origin-heading', '.origin-copy p',
     '.inscription-heading', '.inscription-words span', '.legacy-frame > .archive-label',
-    '.legacy-frame h2 > *', '.legacy-copy p', '.finale-inner > *',
+    '.legacy-frame h2 > *', '.legacy-copy p', '.finale-inner > *', '.wielder-copy',
   ], { autoAlpha: 1, y: 0, clipPath: 'none' })
+  gsap.set('.wielder-stage', { autoAlpha: 1 })
+  gsap.set('.wielder-clip:first-child', { autoAlpha: 1 })
   gsap.set('.masked-heading span', { clipPath: 'none' })
   gsap.set('.annotation-line i, .origin-rule, .inscription-rule, .legacy-rule', { scaleX: 1, scaleY: 1 })
 }
@@ -830,8 +1144,10 @@ if (import.meta.hot) {
     window.clearTimeout(resizeTimer)
     window.removeEventListener('resize', scheduleResizeSynchronization)
     window.visualViewport?.removeEventListener('resize', scheduleResizeSynchronization)
+    motionPreference.removeEventListener('change', onMotionPreferenceChange)
     activeLoader?.destroy()
     activeMedia?.revert()
+    wielderController?.dispose()
     activeWeapon?.dispose()
     destroyScrollExperience()
     gsap.ticker.remove(updateLenis)

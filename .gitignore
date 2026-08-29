@@ -9,3 +9,9 @@ dist/
 !.env.example
 .DS_Store
 Thumbs.db
+
+# Local source/review media for the Wielder cinematic. Only the optimized
+# deployable masters in public/cinematic/wielder/ belong in production.
+media/wielder/raw/
+media/wielder/review/
+media/wielder/frames/
