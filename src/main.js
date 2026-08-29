@@ -700,7 +700,7 @@ function createWielderController() {
 
   const updateCopies = (segment) => {
     const ranges = [
-      [0, 0.04, 0.32], [0, 0.38, 0.82], [1, 0.2, 0.8], [2, 0.2, 0.8],
+      [0, 0.05, 0.4], [0, 0.48, 0.86], [1, 0.2, 0.8], [2, 0.2, 0.8],
       [3, 0.2, 0.8], [4, 0.2, 0.8], [5, 0.26, 0.84],
     ]
     copies.forEach((copy, copyIndex) => {
@@ -718,15 +718,28 @@ function createWielderController() {
   const setProgress = (progress) => {
     latestProgress = gsap.utils.clamp(0, 1, progress)
     const segment = resolveSegment(latestProgress)
-    const crossfade = 0.022
-    const withinLoadRange = getCurrentScrollPosition() > section.offsetTop - window.innerHeight * 2.2
-      && getCurrentScrollPosition() < section.offsetTop + section.offsetHeight + window.innerHeight
+    const seamOverlap = 0.08
+    const memoryOverlap = 0.26
+    const smoothstep = (value) => {
+      const t = gsap.utils.clamp(0, 1, value)
+      return t * t * (3 - 2 * t)
+    }
+    const scrollPosition = getCurrentScrollPosition()
+    const withinLoadRange = scrollPosition > section.offsetTop - window.innerHeight * 2.2
+      && scrollPosition < section.offsetTop + section.offsetHeight + window.innerHeight
 
     clips.forEach((clip, index) => {
       let opacity = index === segment.index ? 1 : 0
-      const deliberateMemoryBreak = segment.index >= 5 && index >= 5
-      if (!deliberateMemoryBreak && index === segment.index - 1 && segment.local < crossfade) opacity = 1 - segment.local / crossfade
-      if (!deliberateMemoryBreak && index === segment.index + 1 && segment.local > 1 - crossfade) opacity = (segment.local - (1 - crossfade)) / crossfade
+      if (segment.index > 0 && segment.index < 6 && segment.local < seamOverlap) {
+        const incoming = smoothstep(segment.local / seamOverlap)
+        if (index === segment.index) opacity = incoming
+        if (index === segment.index - 1) opacity = 1 - incoming
+      }
+      if (segment.index === 6 && segment.local < memoryOverlap) {
+        const incoming = smoothstep(segment.local / memoryOverlap)
+        if (index === 6) opacity = incoming
+        if (index === 5) opacity = 1 - incoming
+      }
       clip.element.style.opacity = opacity.toFixed(3)
       clip.shouldSeek = opacity > 0.001 || Math.abs(index - segment.index) <= 1
       clip.desiredProgress = index === segment.index ? segment.local : (index < segment.index ? 0.999 : 0)
@@ -739,24 +752,28 @@ function createWielderController() {
     let blackout = 0
     let handoff = 0
     let stageOpacity = 1
+    if (segment.index === 0 && segment.local < 0.14) {
+      blackout = smoothstep((0.14 - segment.local) / 0.14) * 0.9
+    }
     if (segment.index === 5 && segment.local > 0.86) {
       blackout = gsap.utils.clamp(0, 0.94, (segment.local - 0.86) / 0.14 * 0.94)
     }
     if (segment.index === 6) {
-      const entryBlack = gsap.utils.clamp(0, 0.94, (0.18 - segment.local) / 0.18 * 0.94)
-      const exitBlack = segment.local < 0.9
-        ? gsap.utils.clamp(0, 0.94, (segment.local - 0.76) / 0.14 * 0.94)
-        : gsap.utils.clamp(0, 0.94, (1 - segment.local) / 0.1 * 0.94)
-      blackout = Math.max(entryBlack, exitBlack)
-      handoff = gsap.utils.clamp(0, 1, (segment.local - 0.86) / 0.12)
-      stageOpacity = 1 - gsap.utils.clamp(0, 1, (segment.local - 0.9) / 0.1)
+      const tailEntry = smoothstep(segment.local / memoryOverlap)
+      handoff = smoothstep((segment.local - 0.77) / 0.22)
+      const entryBlack = (1 - tailEntry) * 0.94
+      const handoffBlack = Math.sin(handoff * Math.PI) * 0.48
+      blackout = Math.max(entryBlack, handoffBlack)
+      stageOpacity = 1 - handoff
     }
     stage.style.opacity = stageOpacity.toFixed(3)
-    stage.style.visibility = latestProgress >= 0.999 ? 'hidden' : 'visible'
+    stage.style.visibility = stageOpacity <= 0.001 ? 'hidden' : 'visible'
     dissolve.style.opacity = blackout.toFixed(3)
     // Timelines are also rendered at progress 0 during refreshes. Only alter
     // the persistent WebGL stage while this chapter actually owns the viewport.
-    if (header.dataset.chapter === 'wielder') gsap.set('.weapon-stage', { autoAlpha: handoff })
+    const ownsViewport = scrollPosition >= section.offsetTop
+      && scrollPosition <= section.offsetTop + section.offsetHeight - window.innerHeight + 1
+    if (ownsViewport) gsap.set('.weapon-stage', { autoAlpha: handoff })
   }
 
   const onMotionChange = () => setProgress(latestProgress)
@@ -835,22 +852,24 @@ function createChapterExperience(weapon) {
   ], { autoAlpha: 0 })
   gsap.set('.masked-heading span', { clipPath: 'inset(100% 0 0)', '--mask-shift': '0%' })
   gsap.set('.inscription-words span', { autoAlpha: 0, clipPath: 'inset(100% 0 0)' })
+  gsap.set('.inscription-heading, .inscription-words, .archive-specs', { filter: 'blur(0px)' })
   gsap.set('.annotation-line i, .origin-rule, .inscription-rule, .legacy-rule', { scaleX: 0, scaleY: 0 })
   weapon.chapterPivot.position.set(0, 0, 0)
   weapon.chapterPivot.rotation.set(0, 0, 0)
   weapon.chapterPivot.scale.setScalar(1)
   weapon.chapterCameraRig.position.set(0, 0, 0)
   weapon.chapterCameraRig.rotation.set(0, 0, 0)
+  weapon.chapterMatch.progress = 0
   Object.assign(weapon.waveState, { opacity: 0, brightness: 0.7, amplitude: 1.7, speed: 0.2, turbulence: 0.14 })
   weapon.emberState.opacity = 0
 
   const anatomy = createTimeline('.chapter--anatomy', 'anatomy', 'draw')
   anatomy
-    .to('.blade-memory', { autoAlpha: 0, y: -18, duration: 0.08, ease: 'power2.in' }, 0)
-    .to('.blade-memory__line', { clipPath: 'inset(100% 0 0 0)', y: -24, duration: 0.08, ease: 'power2.in' }, 0)
-    .to('.anatomy-intro', { autoAlpha: 1, y: 0, duration: 0.09, ease: 'power2.out' }, 0)
-    .fromTo('.anatomy-intro', { y: 26 }, { y: 0, duration: 0.09, ease: 'power2.out' }, 0)
-    .to('.anatomy-intro', { autoAlpha: 0, y: -22, duration: 0.07, ease: 'power1.in' }, 0.11)
+    .to('.blade-memory', { autoAlpha: 0, y: -18, duration: 0.045, ease: 'power2.in' }, 0)
+    .to('.blade-memory__line', { clipPath: 'inset(100% 0 0 0)', y: -24, duration: 0.045, ease: 'power2.in' }, 0)
+    .to('.anatomy-intro', { autoAlpha: 1, y: 0, duration: 0.075, ease: 'power2.out' }, 0.105)
+    .fromTo('.anatomy-intro', { y: 26 }, { y: 0, duration: 0.075, ease: 'power2.out' }, 0.105)
+    .to('.anatomy-intro', { autoAlpha: 0, y: -22, duration: 0.07, ease: 'power1.in' }, 0.19)
     .to(weapon.chapterPivot.position, { x: 0.34 * motion, y: 0.8 * motion, duration: 0.28, ease: 'power2.inOut' }, 0.05)
     .to(weapon.chapterPivot.scale, { x: 1.48, y: 1.48, z: 1.48, duration: 0.28, ease: 'power2.inOut' }, 0.05)
     .to(weapon.chapterPivot.rotation, { y: THREE_DEGREES(-2.4 * motion), z: THREE_DEGREES(1.2 * motion), duration: 0.28, ease: 'power2.inOut' }, 0.05)
@@ -944,15 +963,36 @@ function createChapterExperience(weapon) {
     .to('.inscription-rule', { scaleY: 1, scaleX: 1, duration: 0.35, ease: 'power1.out' }, 0.12)
     .to('.inscription-words span:nth-child(1)', { autoAlpha: 1, clipPath: 'inset(0% 0 0)', duration: 0.12, ease: 'power3.out' }, 0.22)
     .to('.inscription-words span:nth-child(2)', { autoAlpha: 1, clipPath: 'inset(0% 0 0)', duration: 0.12, ease: 'power3.out' }, 0.5)
-    .to('.inscription-words span:nth-child(3)', { autoAlpha: 1, clipPath: 'inset(0% 0 0)', duration: 0.14, ease: 'power3.out' }, 0.78)
+    .to('.inscription-words span:nth-child(3)', { autoAlpha: 1, clipPath: 'inset(0% 0 0)', duration: 0.14, ease: 'power3.out' }, 0.64)
     .to(weapon.chapterCameraRig.rotation, { z: THREE_DEGREES(1.1 * motion), duration: 0.12 }, 0.22)
     .to(weapon.chapterCameraRig.rotation, { z: THREE_DEGREES(-1.1 * motion), duration: 0.12 }, 0.5)
-    .to(weapon.chapterCameraRig.rotation, { z: 0, duration: 0.14 }, 0.78)
+    .to(weapon.chapterCameraRig.rotation, { z: 0, duration: 0.14 }, 0.64)
     .to('.archive-specs', { autoAlpha: 1, duration: 0.12 }, 0.67)
     .to(weapon.lights.engraving, { intensity: weapon.targets.engraving * 1.25, duration: 0.42 }, 0.16)
     .to(weapon.lights.bladeSweep, { intensity: weapon.targets.bladeSweep * 0.34, duration: 0.4 }, 0.24)
+    .to('.inscription-heading, .inscription-words, .archive-specs', {
+      autoAlpha: 0,
+      y: -20,
+      filter: 'blur(4px)',
+      duration: 0.1,
+      ease: 'power2.in',
+    }, 0.88)
+    .to('.inscription-rule', { autoAlpha: 0, duration: 0.08 }, 0.9)
+    .to('.weapon-stage', { autoAlpha: 0, duration: 0.1, ease: 'power2.in' }, 0.9)
 
   const wielderProgress = { value: 0 }
+  const wielderMatch = {
+    x: 0.18,
+    y: 1.68,
+    scale: 1.45,
+    rotationY: THREE_DEGREES(1.75),
+    rotationZ: THREE_DEGREES(82),
+    cameraX: -0.03,
+    cameraY: 0.02,
+    cameraZ: -0.96,
+    cameraRotationY: THREE_DEGREES(1.85),
+    cameraRotationX: THREE_DEGREES(-0.16),
+  }
   const wielder = createTimeline('.chapter--wielder', 'wielder', 'inscription')
   wielder
     .to(wielderProgress, {
@@ -961,26 +1001,41 @@ function createChapterExperience(weapon) {
       onUpdate: () => wielderController.setProgress(wielderProgress.value),
     }, 0)
     // Presentation-only handoff: the extraction rig itself is never touched.
-    .to(weapon.chapterPivot.position, { x: 0.54 * motion, y: 0.7 * motion, duration: 0.015 }, 0.985)
-    .to(weapon.chapterPivot.scale, { x: 1.28, y: 1.28, z: 1.28, duration: 0.015 }, 0.985)
-    .to(weapon.chapterPivot.rotation, { y: THREE_DEGREES(5.5 * motion), z: THREE_DEGREES(220 * motion), duration: 0.015 }, 0.985)
-    .to(weapon.chapterCameraRig.position, { x: -0.1 * motion, y: 0.06 * motion, z: -0.96, duration: 0.015 }, 0.985)
-    .to(weapon.chapterCameraRig.rotation, { y: THREE_DEGREES(5.8 * motion), x: THREE_DEGREES(-0.5 * motion), duration: 0.015 }, 0.985)
-    .to(weapon.lights.rim, { intensity: weapon.targets.rim * 1.28, duration: 0.015 }, 0.985)
-    .to(weapon.lights.key, { intensity: weapon.targets.key * 1.05, duration: 0.015 }, 0.985)
-    .to(weapon.lights.accent, { intensity: weapon.targets.accent * 0.72, duration: 0.015 }, 0.985)
+    .to(weapon.chapterPivot.position, { x: wielderMatch.x, y: wielderMatch.y, duration: 0.015 }, 0.97)
+    .to(weapon.chapterPivot.scale, { x: wielderMatch.scale, y: wielderMatch.scale, z: wielderMatch.scale, duration: 0.015 }, 0.97)
+    .to(weapon.chapterPivot.rotation, { y: wielderMatch.rotationY, z: wielderMatch.rotationZ, duration: 0.015 }, 0.97)
+    .to(weapon.chapterCameraRig.position, { x: wielderMatch.cameraX, y: wielderMatch.cameraY, z: wielderMatch.cameraZ, duration: 0.015 }, 0.97)
+    .to(weapon.chapterCameraRig.rotation, { y: wielderMatch.cameraRotationY, x: wielderMatch.cameraRotationX, duration: 0.015 }, 0.97)
+    .to(weapon.chapterMatch, { progress: 1, duration: 0.015 }, 0.97)
+    .to(weapon.lights.key.color, { r: 0.68, g: 0.76, b: 0.86, duration: 0.015 }, 0.97)
+    .to(weapon.lights.rim, { intensity: weapon.targets.rim * 1.28, duration: 0.015 }, 0.97)
+    .to(weapon.lights.key, { intensity: weapon.targets.key * 1.05, duration: 0.015 }, 0.97)
+    .to(weapon.lights.accent, { intensity: weapon.targets.accent * 0.72, duration: 0.015 }, 0.97)
+    .to(weapon.lights.sheathFill, { intensity: weapon.targets.sheathFill * 0.24, duration: 0.015 }, 0.97)
 
   const legacy = createTimeline('.chapter--legacy', 'legacy', 'wielder')
   legacy
+    .fromTo(weapon.chapterMatch,
+      { progress: 1 },
+      { progress: 0, duration: 0.34, ease: 'power1.inOut', immediateRender: false }, 0)
+    .fromTo(weapon.lights.sheathFill,
+      { intensity: weapon.targets.sheathFill * 0.24 },
+      { intensity: weapon.targets.sheathFill * 0.52, duration: 0.34, ease: 'power1.inOut', immediateRender: false }, 0)
     .fromTo(weapon.chapterPivot.position,
-      { x: 0.54 * motion, y: 0.7 * motion },
+      { x: wielderMatch.x, y: wielderMatch.y },
       { x: 0.54 * motion, y: -0.7 * motion, duration: 0.76, ease: 'power1.inOut', immediateRender: false }, 0)
-    .to(weapon.chapterPivot.scale, { x: 1.28, y: 1.28, z: 1.28, duration: 0.76, ease: 'power1.inOut' }, 0)
+    .fromTo(weapon.chapterPivot.scale,
+      { x: wielderMatch.scale, y: wielderMatch.scale, z: wielderMatch.scale },
+      { x: 1.28, y: 1.28, z: 1.28, duration: 0.76, ease: 'power1.inOut', immediateRender: false }, 0)
     .fromTo(weapon.chapterPivot.rotation,
-      { y: THREE_DEGREES(5.5 * motion), z: THREE_DEGREES(220 * motion) },
+      { y: wielderMatch.rotationY, z: wielderMatch.rotationZ },
       { y: THREE_DEGREES(5.5 * motion), z: THREE_DEGREES(-1.8 * motion), duration: 0.76, ease: 'power1.inOut', immediateRender: false }, 0)
-    .to(weapon.chapterCameraRig.position, { x: -0.1 * motion, y: 0.06 * motion, z: -0.96, duration: 0.76, ease: 'power1.inOut' }, 0)
-    .to(weapon.chapterCameraRig.rotation, { y: THREE_DEGREES(5.8 * motion), x: THREE_DEGREES(-0.5 * motion), duration: 0.76, ease: 'sine.inOut' }, 0)
+    .fromTo(weapon.chapterCameraRig.position,
+      { x: wielderMatch.cameraX, y: wielderMatch.cameraY, z: wielderMatch.cameraZ },
+      { x: -0.1 * motion, y: 0.06 * motion, z: -0.96, duration: 0.76, ease: 'power1.inOut', immediateRender: false }, 0)
+    .fromTo(weapon.chapterCameraRig.rotation,
+      { y: wielderMatch.cameraRotationY, x: wielderMatch.cameraRotationX },
+      { y: THREE_DEGREES(5.8 * motion), x: THREE_DEGREES(-0.5 * motion), duration: 0.76, ease: 'sine.inOut', immediateRender: false }, 0)
     .to('.legacy-frame > .archive-label', { autoAlpha: 1, duration: 0.1 }, 0.05)
     .to('.legacy-frame h2 span', { autoAlpha: 1, y: 0, duration: 0.12, stagger: 0.08, ease: 'power2.out' }, 0.12)
     .fromTo('.legacy-frame h2 span', { y: 30 }, { y: 0, duration: 0.12, stagger: 0.08, ease: 'power2.out' }, 0.12)
@@ -992,6 +1047,13 @@ function createChapterExperience(weapon) {
     .to(weapon.lights.key.color, { r: 0.86, g: 0.89, b: 0.91, duration: 0.4 }, 0.12)
     .to(weapon.lights.key, { intensity: weapon.targets.key * 1.05, duration: 0.5 }, 0.18)
     .to(weapon.lights.accent, { intensity: weapon.targets.accent * 0.72, duration: 0.45 }, 0.18)
+    .to('.legacy-frame > .archive-label, .legacy-frame h2 > *, .legacy-copy p', {
+      autoAlpha: 0,
+      y: -18,
+      duration: 0.1,
+      ease: 'power2.in',
+    }, 0.84)
+    .to('.legacy-rule', { autoAlpha: 0, duration: 0.08, ease: 'power1.in' }, 0.86)
 
   const finaleSection = document.querySelector('.finale')
   const finale = gsap.timeline({

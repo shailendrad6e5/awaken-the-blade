@@ -467,13 +467,19 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
   const sourceParent = sword.parent
 
   const weaponRig = new THREE.Group()
+  const sheathMatchPivot = new THREE.Group()
+  const swordMatchPivot = new THREE.Group()
   const sheathRig = new THREE.Group()
   const swordRig = new THREE.Group()
   weaponRig.name = 'WeaponPresentationRig'
+  sheathMatchPivot.name = 'SheathChapterMatchPivot'
+  swordMatchPivot.name = 'SwordChapterMatchPivot'
   sheathRig.name = 'SheathPresentationRig'
   swordRig.name = 'SwordPresentationRig'
   sourceParent.add(weaponRig)
-  weaponRig.add(sheathRig, swordRig)
+  weaponRig.add(sheathMatchPivot, swordMatchPivot)
+  sheathMatchPivot.add(sheathRig)
+  swordMatchPivot.add(swordRig)
   sheathRig.add(sheath)
   swordRig.add(sword)
 
@@ -644,6 +650,9 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
   const draw = { progress: 0 }
   const sheathMotion = { progress: 0 }
   const payoff = { progress: 0 }
+  // Temporary, outer-only composition used for the AI-to-real match frame.
+  // The physical Sword/Sheath rigs beneath these pivots remain untouched.
+  const chapterMatch = { progress: 0, gap: 0.9 }
   const cameraMotion = { yaw: 0, pitch: 0 }
 
   const smoothstep = (start, end, value) => {
@@ -687,6 +696,18 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
   let previousStateLabel = ''
   const swordWorldPosition = new THREE.Vector3()
   const sheathWorldPosition = new THREE.Vector3()
+  const matchSwordCenterWorld = new THREE.Vector3()
+  const matchSheathCenterWorld = new THREE.Vector3()
+  const matchSwordCenterLocal = new THREE.Vector3()
+  const matchSheathCenterLocal = new THREE.Vector3()
+  const matchScreenDownWorld = new THREE.Vector3()
+  const matchScreenDownLocal = new THREE.Vector3()
+  const matchWorldScale = new THREE.Vector3()
+  const matchCameraQuaternion = new THREE.Quaternion()
+  const matchInverseWorld = new THREE.Matrix4()
+  const matchTarget = new THREE.Vector3()
+  const matchSwordBounds = new THREE.Box3()
+  const matchSheathBounds = new THREE.Box3()
 
   const render = (time) => {
     frameId = requestAnimationFrame(render)
@@ -731,6 +752,35 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
     // Sheath drifts slightly during final phase
     sheathRig.position.copy(sheathRigStart).addScaledVector(extractionVector, -drawDistance * 0.055 * resolvedSheathProgress)
     sheathRig.position.z = sheathRigStart.z - longestDimension * 0.035 * resolvedSheathProgress
+
+    // Recompose the fully extracted pair only during the short memory-match
+    // state. Both match pivots are reset before measurement, so this remains
+    // deterministic in either scroll direction and never feeds back into the
+    // extraction or authored GLB transforms.
+    const matchProgress = THREE.MathUtils.clamp(chapterMatch.progress, 0, 1)
+    sheathMatchPivot.position.set(0, 0, 0)
+    swordMatchPivot.position.set(0, 0, 0)
+    if (matchProgress > 0.0001) {
+      scene.updateMatrixWorld(true)
+      matchSwordBounds.setFromObject(sword).getCenter(matchSwordCenterWorld)
+      matchSheathBounds.setFromObject(sheath).getCenter(matchSheathCenterWorld)
+      matchSwordCenterLocal.copy(matchSwordCenterWorld)
+      matchSheathCenterLocal.copy(matchSheathCenterWorld)
+      weaponRig.worldToLocal(matchSwordCenterLocal)
+      weaponRig.worldToLocal(matchSheathCenterLocal)
+
+      camera.getWorldQuaternion(matchCameraQuaternion)
+      matchScreenDownWorld.set(0, -1, 0).applyQuaternion(matchCameraQuaternion)
+      matchInverseWorld.copy(weaponRig.matrixWorld).invert()
+      matchScreenDownLocal.copy(matchScreenDownWorld).transformDirection(matchInverseWorld)
+      weaponRig.getWorldScale(matchWorldScale)
+      const averageWorldScale = Math.max(0.0001, (matchWorldScale.x + matchWorldScale.y + matchWorldScale.z) / 3)
+
+      matchTarget.copy(matchSwordCenterLocal)
+        .sub(matchSheathCenterLocal)
+        .addScaledVector(matchScreenDownLocal, chapterMatch.gap / averageWorldScale)
+      sheathMatchPivot.position.copy(matchTarget).multiplyScalar(matchProgress)
+    }
 
     const progressLabel = draw.progress.toFixed(4)
     const sheathProgressLabel = sheathMotion.progress.toFixed(4)
@@ -779,6 +829,7 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
     draw,
     sheathMotion,
     payoff,
+    chapterMatch,
     cameraMotion,
     setExtractionLighting,
     resize: resizeRenderer,
@@ -788,6 +839,8 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
       sword,
       sheath,
       weaponRig,
+      swordMatchPivot,
+      sheathMatchPivot,
       swordRig,
       sheathRig,
       meshCount,
