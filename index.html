@@ -84,8 +84,8 @@
             </h1>
             <p class="hero-copy">An ancient weapon sleeps beneath the silence.<br />Draw it, and awaken what time tried to bury.</p>
             <div class="hero-actions">
-              <button class="button-primary" type="button" data-draw-button><span>Draw the Blade</span><b aria-hidden="true">↓</b></button>
-              <a class="button-secondary" href="#origin">Discover its origin <span aria-hidden="true">→</span></a>
+              <button class="button-primary" type="button" data-draw-button data-magnetic data-cursor="draw"><span>Draw the Blade</span><b aria-hidden="true">↓</b></button>
+              <a class="button-secondary" href="#origin" data-magnetic><span class="magnetic-label">Discover its origin</span> <span aria-hidden="true">→</span></a>
             </div>
           </div>
 
@@ -234,12 +234,12 @@
           <p class="archive-label">Final / The awakened steel</p>
           <h2 id="finale-title">The blade<br /><span>is awake.</span></h2>
           <p>What was buried has been drawn again.</p>
-          <button class="button-primary finale-inspect" type="button" data-inspect-blade>
+          <button class="button-primary finale-inspect" type="button" data-inspect-blade data-magnetic data-cursor="inspect">
             <span>Inspect the Blade</span><b aria-hidden="true">→</b>
           </button>
           <div class="finale-actions">
-            <button class="button-primary" type="button" data-return-sheath><span>Return it to the Sheath</span><b aria-hidden="true">↑</b></button>
-            <button class="button-secondary" type="button" data-begin-again>Begin again <span aria-hidden="true">↟</span></button>
+            <button class="button-primary" type="button" data-return-sheath data-magnetic data-cursor="return"><span>Return it to the Sheath</span><b aria-hidden="true">↑</b></button>
+            <button class="button-secondary" type="button" data-begin-again data-magnetic><span class="magnetic-label">Begin again</span> <span aria-hidden="true">↟</span></button>
           </div>
         </div>
       </section>
@@ -270,6 +270,9 @@
         <button class="inspection-control inspection-close" type="button" data-inspection-close>Close <span aria-hidden="true">×</span></button>
       </div>
     </section>
+    <div class="forged-cursor" data-forged-cursor data-state="hidden" aria-hidden="true">
+      <span class="forged-cursor__reticle"></span>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
