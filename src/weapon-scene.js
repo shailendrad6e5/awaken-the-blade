@@ -561,7 +561,19 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
   const chapterPivot = new THREE.Group()
   chapterPivot.name = 'ChapterPresentationPivot'
   chapterPivot.add(modelPivot)
-  scene.add(chapterPivot)
+  // Inspection is isolated above every production presentation/extraction
+  // transform. These wrappers stay at identity outside inspection, so the
+  // authored GLB nodes and the proven Sword/Sheath rig are never rewritten.
+  const inspectionPlacement = new THREE.Group()
+  const inspectionOrbit = new THREE.Group()
+  const inspectionOffset = new THREE.Group()
+  inspectionPlacement.name = 'InspectionPlacement'
+  inspectionOrbit.name = 'InspectionOrbit'
+  inspectionOffset.name = 'InspectionCenterOffset'
+  inspectionOffset.add(chapterPivot)
+  inspectionOrbit.add(inspectionOffset)
+  inspectionPlacement.add(inspectionOrbit)
+  scene.add(inspectionPlacement)
   modelPivot.updateMatrixWorld(true)
 
   const parentWorldOrigin = sourceParent.localToWorld(new THREE.Vector3())
@@ -655,6 +667,114 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
   const chapterMatch = { progress: 0, gap: 0.9 }
   const cameraMotion = { yaw: 0, pitch: 0 }
 
+  const inspectionBounds = new THREE.Box3()
+  const inspectionSecondaryBounds = new THREE.Box3()
+  const inspectionAnchorCenter = new THREE.Vector3()
+  const inspectionTargetCenter = new THREE.Vector3()
+  const inspectionCameraPosition = new THREE.Vector3()
+  const inspectionCameraForward = new THREE.Vector3()
+  const inspectionCameraUp = new THREE.Vector3()
+  const inspectionCameraQuaternion = new THREE.Quaternion()
+  let inspectionAnchorDepth = 10
+  const inspection = {
+    active: false,
+    blend: 0,
+    currentYaw: 0,
+    currentPitch: 0,
+    currentZoom: 1,
+    targetYaw: 0,
+    targetPitch: 0,
+    targetZoom: 1,
+    baseZoom: 1,
+    defaultRoll: THREE.MathUtils.degToRad(84),
+    limits: {
+      yaw: THREE.MathUtils.degToRad(55),
+      pitch: THREE.MathUtils.degToRad(18),
+      zoomMin: 0.88,
+      zoomMax: 1.14,
+    },
+    refreshFrame(remeasure = this.active) {
+      if (remeasure) {
+        // A breakpoint change can rebuild the story's responsive camera frame.
+        // Measure from identity wrappers so inspection never feeds its own
+        // temporary rotation or scale back into the production composition.
+        inspectionPlacement.position.set(0, 0, 0)
+        inspectionOrbit.position.set(0, 0, 0)
+        inspectionOrbit.rotation.set(0, 0, 0)
+        inspectionOrbit.scale.setScalar(1)
+        inspectionOffset.position.set(0, 0, 0)
+        cameraRig.rotation.set(cameraMotion.pitch, cameraMotion.yaw, 0)
+        scene.updateMatrixWorld(true)
+        inspectionBounds.setFromObject(sword)
+        inspectionSecondaryBounds.setFromObject(sheath)
+        inspectionBounds.union(inspectionSecondaryBounds).getCenter(inspectionAnchorCenter)
+        camera.getWorldPosition(inspectionCameraPosition)
+        camera.getWorldQuaternion(inspectionCameraQuaternion)
+        inspectionCameraForward.set(0, 0, -1).applyQuaternion(inspectionCameraQuaternion)
+        inspectionAnchorDepth = Math.max(
+          4,
+          inspectionAnchorCenter.clone().sub(inspectionCameraPosition).dot(inspectionCameraForward),
+        )
+      }
+
+      camera.getWorldPosition(inspectionCameraPosition)
+      camera.getWorldQuaternion(inspectionCameraQuaternion)
+      inspectionCameraForward.set(0, 0, -1).applyQuaternion(inspectionCameraQuaternion)
+      inspectionCameraUp.set(0, 1, 0).applyQuaternion(inspectionCameraQuaternion)
+      inspectionTargetCenter.copy(inspectionCameraPosition)
+        .addScaledVector(inspectionCameraForward, inspectionAnchorDepth)
+        .addScaledVector(inspectionCameraUp, canvas.clientWidth < 720 ? 0 : 0.08)
+
+      const aspect = Math.max(canvas.clientWidth, 1) / Math.max(canvas.clientHeight, 1)
+      // The fully drawn Sword is considerably wider than the in-story frame.
+      // Keep the complete artifact inside the viewport at every breakpoint;
+      // user zoom is then applied inside the bounded range below.
+      this.baseZoom = Math.min(0.78, aspect * 0.44)
+    },
+    begin() {
+      this.active = true
+      this.blend = 0
+      this.currentYaw = 0
+      this.currentPitch = 0
+      this.currentZoom = 1
+      this.targetYaw = 0
+      this.targetPitch = 0
+      this.targetZoom = 1
+      this.refreshFrame(true)
+    },
+    setRotation(yaw, pitch) {
+      this.targetYaw = THREE.MathUtils.clamp(yaw, -this.limits.yaw, this.limits.yaw)
+      this.targetPitch = THREE.MathUtils.clamp(pitch, -this.limits.pitch, this.limits.pitch)
+    },
+    adjustZoom(delta) {
+      this.targetZoom = THREE.MathUtils.clamp(
+        this.targetZoom + delta,
+        this.limits.zoomMin,
+        this.limits.zoomMax,
+      )
+    },
+    resetView() {
+      this.targetYaw = 0
+      this.targetPitch = 0
+      this.targetZoom = 1
+    },
+    finish() {
+      this.active = false
+      this.blend = 0
+      this.currentYaw = 0
+      this.currentPitch = 0
+      this.currentZoom = 1
+      this.targetYaw = 0
+      this.targetPitch = 0
+      this.targetZoom = 1
+      inspectionPlacement.position.set(0, 0, 0)
+      inspectionOrbit.position.set(0, 0, 0)
+      inspectionOrbit.rotation.set(0, 0, 0)
+      inspectionOrbit.scale.setScalar(1)
+      inspectionOffset.position.set(0, 0, 0)
+    },
+  }
+
   const smoothstep = (start, end, value) => {
     const normalized = THREE.MathUtils.clamp((value - start) / (end - start), 0, 1)
     return normalized * normalized * (3 - 2 * normalized)
@@ -684,6 +804,7 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
   const pointerCurrent = { x: 0, y: 0 }
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
   const onPointerMove = (event) => {
+    if (inspection.active || inspection.blend > 0.0001) return
     if (window.innerWidth < 900 || reducedMotion.matches) return
     pointerTarget.x = (event.clientX / window.innerWidth - 0.5) * 2
     pointerTarget.y = (event.clientY / window.innerHeight - 0.5) * 2
@@ -716,12 +837,41 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
     const delta = Math.min((time - previousTime) / 1000, 0.05)
     previousTime = time
 
+    const inspectionEngaged = inspection.active || inspection.blend > 0.0001
+
+    const inspectionResponse = reducedMotion.matches ? 18 : 9.5
+    const inspectionDamping = 1 - Math.exp(-inspectionResponse * delta)
+    inspection.currentYaw += (inspection.targetYaw - inspection.currentYaw) * inspectionDamping
+    inspection.currentPitch += (inspection.targetPitch - inspection.currentPitch) * inspectionDamping
+    inspection.currentZoom += (inspection.targetZoom - inspection.currentZoom) * inspectionDamping
+
+    const inspectionBlend = THREE.MathUtils.clamp(inspection.blend, 0, 1)
+    inspectionPlacement.position.copy(inspectionTargetCenter).multiplyScalar(inspectionBlend)
+    inspectionOffset.position.copy(inspectionAnchorCenter).multiplyScalar(-inspectionBlend)
+    inspectionOrbit.rotation.order = 'YXZ'
+    inspectionOrbit.rotation.set(
+      inspection.currentPitch * inspectionBlend,
+      inspection.currentYaw * inspectionBlend,
+      inspection.defaultRoll * inspectionBlend,
+    )
+    const inspectionScale = THREE.MathUtils.lerp(
+      1,
+      inspection.baseZoom * inspection.currentZoom,
+      inspectionBlend,
+    )
+    inspectionOrbit.scale.setScalar(inspectionScale)
+
     // Pointer damping
-    pointerCurrent.x += (pointerTarget.x - pointerCurrent.x) * Math.min(delta * 3.2, 1)
-    pointerCurrent.y += (pointerTarget.y - pointerCurrent.y) * Math.min(delta * 3.2, 1)
-    cameraRig.rotation.y = cameraMotion.yaw + THREE.MathUtils.degToRad(pointerCurrent.x * 1.35)
-    cameraRig.rotation.x = cameraMotion.pitch + THREE.MathUtils.degToRad(pointerCurrent.y * 0.7)
-    key.position.x = 4.4 + pointerCurrent.x * 0.2
+    // Keep the pre-inspection parallax sample intact. Its contribution fades
+    // out/in with the wrapper blend, then ordinary pointer damping resumes.
+    if (!inspectionEngaged) {
+      pointerCurrent.x += (pointerTarget.x - pointerCurrent.x) * Math.min(delta * 3.2, 1)
+      pointerCurrent.y += (pointerTarget.y - pointerCurrent.y) * Math.min(delta * 3.2, 1)
+    }
+    const pointerWeight = 1 - inspectionBlend
+    cameraRig.rotation.y = cameraMotion.yaw + THREE.MathUtils.degToRad(pointerCurrent.x * 1.35 * pointerWeight)
+    cameraRig.rotation.x = cameraMotion.pitch + THREE.MathUtils.degToRad(pointerCurrent.y * 0.7 * pointerWeight)
+    if (!inspectionEngaged) key.position.x = 4.4 + pointerCurrent.x * 0.2
 
     // Forge atmosphere shares this renderer and therefore cannot drift out of
     // sync with the chapter timelines. Decorative motion is greatly reduced
@@ -794,6 +944,12 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
       canvas.dataset.swordWorldPosition = JSON.stringify(sword.getWorldPosition(swordWorldPosition).toArray())
       canvas.dataset.sheathWorldPosition = JSON.stringify(sheath.getWorldPosition(sheathWorldPosition).toArray())
     }
+    canvas.dataset.inspectionActive = String(inspection.active)
+    canvas.dataset.inspectionBlend = inspectionBlend.toFixed(4)
+    canvas.dataset.inspectionYaw = inspection.currentYaw.toFixed(4)
+    canvas.dataset.inspectionPitch = inspection.currentPitch.toFixed(4)
+    canvas.dataset.inspectionZoom = inspection.currentZoom.toFixed(4)
+    canvas.dataset.inspectionBaseZoom = inspection.baseZoom.toFixed(4)
 
     renderer.render(scene, camera)
   }
@@ -831,6 +987,7 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
     payoff,
     chapterMatch,
     cameraMotion,
+    inspection,
     setExtractionLighting,
     resize: resizeRenderer,
     lights: { key, rim, fill, engraving, accent, sheathFill, bladeSweep, ambient },
@@ -843,6 +1000,9 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
       sheathMatchPivot,
       swordRig,
       sheathRig,
+      inspectionPlacement,
+      inspectionOrbit,
+      inspectionOffset,
       meshCount,
       hierarchy,
       dimensions: sourceSize.toArray(),

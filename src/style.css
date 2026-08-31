@@ -223,8 +223,122 @@ h1 { margin: 20px 0 30px; font-family: 'Cormorant Garamond', serif; font-size: c
 .finale h2 { margin: 22px 0 30px; font-size: clamp(5rem, 11vw, 11rem); line-height: .7; letter-spacing: -.065em; }
 .finale h2 span { margin-left: 14vw; color: var(--steel-light); }
 .finale-inner > p:not(.archive-label) { margin: 0 0 38px; color: var(--text-secondary); }
+.finale-inspect { margin: 0 0 24px; }
+.finale-inspect b { transform: translateX(0); }
+.finale-inspect:hover b { transform: translateX(4px); }
 .finale-actions { display: flex; align-items: center; gap: 34px; }
 .finale .button-secondary { border: 0; background: transparent; cursor: pointer; }
+
+/* Inspection is a fixed interaction layer around the existing persistent
+   renderer. The weapon stage alone rises above the darkened site; no second
+   canvas, scene, or model is introduced. */
+.inspection-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 22;
+  background:
+    radial-gradient(ellipse at 50% 48%, rgba(102, 118, 130, .075), transparent 38%),
+    rgba(3, 4, 5, .94);
+  opacity: 0;
+  visibility: hidden;
+}
+.inspection-ui {
+  position: fixed;
+  inset: 0;
+  z-index: 24;
+  color: var(--text-primary);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.inspection-surface {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
+}
+.inspection-dragging .inspection-surface { cursor: grabbing; }
+.inspection-heading {
+  position: absolute;
+  top: clamp(104px, 15vh, 150px);
+  left: clamp(54px, 7vw, 116px);
+  z-index: 2;
+  pointer-events: none;
+}
+.inspection-heading h2 {
+  margin: 12px 0 0;
+  color: rgba(238, 234, 226, .92);
+  font: 500 clamp(2.8rem, 5vw, 5.4rem)/.82 'Cormorant Garamond', serif;
+  letter-spacing: -.045em;
+  text-transform: uppercase;
+}
+.inspection-instructions {
+  position: absolute;
+  right: clamp(48px, 6vw, 98px);
+  bottom: clamp(48px, 7vh, 74px);
+  z-index: 2;
+  display: flex;
+  gap: 28px;
+  margin: 0;
+  color: #666d73;
+  font-size: .54rem;
+  font-weight: 600;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.inspection-instructions span + span::before {
+  content: '/';
+  margin-right: 28px;
+  color: #3e4347;
+}
+.inspection-controls {
+  position: absolute;
+  right: clamp(48px, 6vw, 98px);
+  top: clamp(104px, 15vh, 150px);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 34px;
+  pointer-events: auto;
+}
+.inspection-control {
+  position: relative;
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: .58rem;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  transition: color 180ms ease;
+}
+.inspection-control::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 4px;
+  left: 0;
+  height: 1px;
+  background: var(--steel-dark);
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 240ms ease;
+}
+.inspection-control:hover,
+.inspection-control:focus-visible { color: var(--text-primary); }
+.inspection-control:hover::after,
+.inspection-control:focus-visible::after {
+  transform: scaleX(1);
+  transform-origin: left;
+}
+.inspection-close span { margin-left: 8px; font-size: .9rem; font-weight: 400; }
+body.inspection-active { overscroll-behavior: none; user-select: none; }
+body.inspection-active .weapon-stage { z-index: 23; }
 
 :focus-visible { outline: 1px solid var(--steel-light); outline-offset: 4px; }
 
@@ -310,6 +424,11 @@ h1 { margin: 20px 0 30px; font-family: 'Cormorant Garamond', serif; font-size: c
   .finale h2 { font-size: 18vw; }
   .finale h2 span { margin-left: 8vw; }
   .finale-actions { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .inspection-heading { top: 104px; left: 24px; }
+  .inspection-heading h2 { font-size: 12vw; }
+  .inspection-controls { top: auto; right: 24px; bottom: 32px; gap: 24px; }
+  .inspection-instructions { right: auto; bottom: 84px; left: 24px; flex-direction: column; gap: 8px; }
+  .inspection-instructions span + span::before { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
