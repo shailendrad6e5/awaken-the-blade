@@ -24,6 +24,13 @@ const chapterLinks = [...document.querySelectorAll('[data-chapter-link]')]
 const drawButton = document.querySelector('[data-draw-button]')
 const returnButton = document.querySelector('[data-return-sheath]')
 const beginAgainButton = document.querySelector('[data-begin-again]')
+const inspectButton = document.querySelector('[data-inspect-blade]')
+const inspectionBackdrop = document.querySelector('[data-inspection-backdrop]')
+const inspectionUI = document.querySelector('[data-inspection-ui]')
+const inspectionSurface = document.querySelector('[data-inspection-surface]')
+const inspectionReset = document.querySelector('[data-inspection-reset]')
+const inspectionClose = document.querySelector('[data-inspection-close]')
+const siteShell = document.querySelector('.site-shell')
 const canvas = document.querySelector('.weapon-canvas')
 const loaderElement = document.querySelector('[data-loader]')
 const loaderPercent = document.querySelector('[data-loader-percent]')
@@ -44,6 +51,7 @@ let resizeGeneration = 0
 let pendingResizeAnchor
 let viewportMode = getViewportMode()
 let wielderController
+let inspectionController
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
 
 const lenis = new Lenis({
@@ -176,6 +184,12 @@ function renderTimelinesAtCurrentScroll() {
 async function synchronizeResize(generation) {
   if (!activeWeapon || !experienceStarted || generation !== resizeGeneration) return
 
+  if (inspectionController?.isActive()) {
+    inspectionController.handleResize()
+    pendingResizeAnchor = undefined
+    return
+  }
+
   const preservedAnchor = pendingResizeAnchor ?? captureScrollAnchor()
   const nextViewportMode = getViewportMode()
   const crossedBreakpoint = nextViewportMode !== viewportMode
@@ -222,6 +236,10 @@ window.visualViewport?.addEventListener('resize', scheduleResizeSynchronization,
 
 async function synchronizeMotionPreference() {
   if (!activeWeapon || !experienceStarted) return
+  if (inspectionController?.isActive()) {
+    inspectionController.handleMotionPreferenceChange()
+    return
+  }
   const preservedAnchor = captureScrollAnchor()
   rebuildScrollExperienceForViewport()
   await waitForStableLayout()
@@ -428,6 +446,347 @@ returnButton?.addEventListener('click', () => {
 beginAgainButton?.addEventListener('click', () => {
   lenis.scrollTo(0, { duration: 2.6, lock: false })
 })
+
+function createInspectionController(weapon) {
+  const finaleElements = [...document.querySelectorAll('.finale-inner > *')]
+  const focusableControls = [inspectionReset, inspectionClose].filter(Boolean)
+  const scrollKeys = new Set(['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' '])
+  const inspectionLightLevels = {
+    key: 0.92,
+    rim: 1.34,
+    fill: 0.72,
+    engraving: 0.74,
+    accent: 0.18,
+    sheathFill: 0.38,
+    bladeSweep: 0.28,
+    ambient: 0.68,
+  }
+  let active = false
+  let closing = false
+  let dragging = false
+  let pointerId = -1
+  let pointerStartX = 0
+  let pointerStartY = 0
+  let startYaw = 0
+  let startPitch = 0
+  let transition
+  let entryAnchor
+  let entryScroll = 0
+  let entryFocus
+  let finaleStyles = []
+  let lightSnapshot = []
+  let frozenTriggers = []
+  let resizeDeferred = false
+  let motionDeferred = false
+
+  const snapshotLights = () => Object.entries(weapon.lights).map(([name, light]) => ({
+    name,
+    light,
+    intensity: light.intensity,
+    color: light.color ? [light.color.r, light.color.g, light.color.b] : null,
+  }))
+
+  const restoreElementStyles = () => {
+    finaleStyles.forEach(({ element, style }) => {
+      if (style === null) element.removeAttribute('style')
+      else element.setAttribute('style', style)
+    })
+  }
+
+  const setDragging = (value) => {
+    dragging = value
+    document.body.classList.toggle('inspection-dragging', value)
+  }
+
+  const open = () => {
+    if (active || closing || !weapon.inspection || header.dataset.chapter !== 'finale') return
+
+    active = true
+    resizeDeferred = false
+    motionDeferred = false
+    entryAnchor = captureScrollAnchor()
+    entryScroll = getCurrentScrollPosition()
+    entryFocus = document.activeElement
+    finaleStyles = finaleElements.map((element) => ({
+      element,
+      style: element.getAttribute('style'),
+    }))
+    lightSnapshot = snapshotLights()
+
+    closeMenu()
+    lenis.stop()
+    // Preserve the existing pin/animation state while inspection owns input.
+    // Native viewport reflow can still emit scroll events even with Lenis
+    // stopped; disabling updates (without reverting) keeps Finale frozen.
+    frozenTriggers = [activeMaster, ...activeChapters]
+      .map((timeline) => timeline?.scrollTrigger)
+      .filter((trigger) => trigger?.enabled)
+    frozenTriggers.forEach((trigger) => trigger.disable(false, false))
+    lenis.scrollTo(entryScroll, { immediate: true, force: true })
+    weapon.inspection.begin()
+    inspectionBackdrop.hidden = false
+    inspectionUI.hidden = false
+    inspectionUI.setAttribute('aria-hidden', 'false')
+    document.body.classList.add('inspection-active')
+    document.body.dataset.inspectionState = 'entering'
+    siteShell.inert = true
+
+    gsap.set([inspectionBackdrop, inspectionUI], { autoAlpha: 0 })
+    const reduced = motionPreference.matches
+    const duration = reduced ? 0.22 : 0.86
+    transition?.kill()
+    transition = gsap.timeline({
+      defaults: { overwrite: 'auto' },
+      onComplete: () => {
+        document.body.dataset.inspectionState = 'active'
+        inspectionClose?.focus({ preventScroll: true })
+      },
+    })
+      .to(finaleElements, {
+        autoAlpha: 0,
+        y: reduced ? -4 : -14,
+        duration: reduced ? 0.12 : 0.42,
+        ease: 'power2.in',
+      }, 0)
+      .to(inspectionBackdrop, {
+        autoAlpha: 1,
+        duration,
+        ease: 'power2.inOut',
+      }, 0)
+      .to(weapon.inspection, {
+        blend: 1,
+        duration,
+        ease: reduced ? 'power1.out' : 'power3.inOut',
+      }, 0)
+      .to(inspectionUI, {
+        autoAlpha: 1,
+        duration: reduced ? 0.12 : 0.34,
+        ease: 'power2.out',
+      }, duration * 0.64)
+
+    lightSnapshot.forEach(({ name, light }) => {
+      transition.to(light, {
+        intensity: weapon.targets[name] * inspectionLightLevels[name],
+        duration,
+        ease: 'power2.inOut',
+      }, 0)
+    })
+    transition
+      .to(weapon.lights.key.color, { r: 0.7, g: 0.78, b: 0.84, duration, ease: 'power2.inOut' }, 0)
+      .to(weapon.lights.rim.color, { r: 0.54, g: 0.65, b: 0.74, duration, ease: 'power2.inOut' }, 0)
+  }
+
+  const restoreScrollState = async () => {
+    const nextViewportMode = getViewportMode()
+    const crossedBreakpoint = nextViewportMode !== viewportMode
+    activeWeapon.resize()
+    await waitForStableLayout()
+    lenis.resize()
+
+    // Keep the frozen Finale visible until layout has settled, then rebuild
+    // and restore its semantic anchor in the same task, before the next paint.
+    if (motionDeferred || crossedBreakpoint) rebuildScrollExperienceForViewport()
+    else frozenTriggers.forEach((trigger) => trigger.enable(false, false))
+    frozenTriggers = []
+    if (resizeDeferred || motionDeferred || crossedBreakpoint) ScrollTrigger.refresh()
+    lenis.resize()
+    const layoutChanged = resizeDeferred || motionDeferred || crossedBreakpoint
+    const destination = layoutChanged
+      ? resolveScrollAnchor(entryAnchor ?? { scrollPosition: entryScroll })
+      : entryScroll
+    lenis.scrollTo(Math.min(destination, lenis.limit), { immediate: true, force: true })
+    ScrollTrigger.update()
+    renderTimelinesAtCurrentScroll()
+    viewportMode = nextViewportMode
+    pendingResizeAnchor = undefined
+    lenis.start()
+  }
+
+  const finishClose = async () => {
+    weapon.inspection.finish()
+    inspectionBackdrop.hidden = true
+    inspectionUI.hidden = true
+    inspectionUI.setAttribute('aria-hidden', 'true')
+    document.body.classList.remove('inspection-active', 'inspection-dragging')
+    delete document.body.dataset.inspectionState
+    siteShell.inert = false
+    restoreElementStyles()
+    await restoreScrollState()
+    active = false
+    closing = false
+    resizeDeferred = false
+    motionDeferred = false
+    const focusTarget = entryFocus === inspectButton ? inspectButton : (inspectButton ?? entryFocus)
+    focusTarget?.focus?.({ preventScroll: true })
+  }
+
+  const close = () => {
+    if (!active || closing) return
+    closing = true
+    setDragging(false)
+    if (pointerId !== -1) {
+      try { inspectionSurface.releasePointerCapture(pointerId) } catch { /* capture may already be gone */ }
+      pointerId = -1
+    }
+    document.body.dataset.inspectionState = 'closing'
+    transition?.kill()
+    const reduced = motionPreference.matches
+    const duration = reduced ? 0.2 : 0.72
+    transition = gsap.timeline({
+      defaults: { overwrite: 'auto' },
+      onComplete: () => { void finishClose() },
+    })
+      .to(inspectionUI, {
+        autoAlpha: 0,
+        duration: reduced ? 0.1 : 0.22,
+        ease: 'power1.in',
+      }, 0)
+      .to(weapon.inspection, {
+        blend: 0,
+        duration,
+        ease: reduced ? 'power1.out' : 'power3.inOut',
+      }, 0)
+      .to(inspectionBackdrop, {
+        autoAlpha: 0,
+        duration,
+        ease: 'power2.inOut',
+      }, 0)
+      .to(finaleElements, {
+        autoAlpha: 1,
+        y: 0,
+        duration: reduced ? 0.12 : 0.38,
+        ease: 'power2.out',
+      }, duration * 0.58)
+
+    lightSnapshot.forEach(({ light, intensity, color }) => {
+      transition.to(light, { intensity, duration, ease: 'power2.inOut' }, 0)
+      if (color) {
+        transition.to(light.color, {
+          r: color[0],
+          g: color[1],
+          b: color[2],
+          duration,
+          ease: 'power2.inOut',
+        }, 0)
+      }
+    })
+  }
+
+  const onPointerDown = (event) => {
+    if (!active || closing || event.button !== 0) return
+    pointerId = event.pointerId
+    pointerStartX = event.clientX
+    pointerStartY = event.clientY
+    startYaw = weapon.inspection.targetYaw
+    startPitch = weapon.inspection.targetPitch
+    inspectionSurface.setPointerCapture(pointerId)
+    setDragging(true)
+    event.preventDefault()
+  }
+
+  const onPointerMove = (event) => {
+    if (!active || closing || !dragging || event.pointerId !== pointerId) return
+    const yaw = startYaw + (event.clientX - pointerStartX) * 0.0034
+    const pitch = startPitch + (event.clientY - pointerStartY) * 0.0022
+    weapon.inspection.setRotation(yaw, pitch)
+    event.preventDefault()
+  }
+
+  const onPointerEnd = (event) => {
+    if (event.pointerId !== pointerId) return
+    try { inspectionSurface.releasePointerCapture(pointerId) } catch { /* pointer may already be released */ }
+    pointerId = -1
+    setDragging(false)
+  }
+
+  const onWheel = (event) => {
+    if (!active) return
+    event.preventDefault()
+    if (!closing) weapon.inspection.adjustZoom(-event.deltaY * 0.00045)
+  }
+
+  const onTouchMove = (event) => {
+    if (active) event.preventDefault()
+  }
+
+  const onKeyDown = (event) => {
+    if (!active) return
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      close()
+      return
+    }
+    if (event.key === 'Tab' && focusableControls.length) {
+      const currentIndex = focusableControls.indexOf(document.activeElement)
+      const nextIndex = event.shiftKey
+        ? (currentIndex <= 0 ? focusableControls.length - 1 : currentIndex - 1)
+        : (currentIndex + 1) % focusableControls.length
+      event.preventDefault()
+      focusableControls[nextIndex].focus({ preventScroll: true })
+      return
+    }
+    if (scrollKeys.has(event.key)) event.preventDefault()
+  }
+
+  const onReset = () => {
+    if (!active || closing) return
+    weapon.inspection.resetView()
+  }
+
+  inspectButton?.addEventListener('click', open)
+  inspectionReset?.addEventListener('click', onReset)
+  inspectionClose?.addEventListener('click', close)
+  inspectionSurface?.addEventListener('pointerdown', onPointerDown)
+  inspectionSurface?.addEventListener('pointermove', onPointerMove)
+  inspectionSurface?.addEventListener('pointerup', onPointerEnd)
+  inspectionSurface?.addEventListener('pointercancel', onPointerEnd)
+  window.addEventListener('wheel', onWheel, { passive: false, capture: true })
+  window.addEventListener('touchmove', onTouchMove, { passive: false, capture: true })
+  window.addEventListener('keydown', onKeyDown, { capture: true })
+
+  return {
+    isActive: () => active || closing,
+    handleResize() {
+      if (!active) return
+      resizeDeferred = true
+      weapon.resize()
+      weapon.inspection.refreshFrame()
+    },
+    handleMotionPreferenceChange() {
+      if (active) motionDeferred = true
+    },
+    destroy() {
+      transition?.kill()
+      inspectButton?.removeEventListener('click', open)
+      inspectionReset?.removeEventListener('click', onReset)
+      inspectionClose?.removeEventListener('click', close)
+      inspectionSurface?.removeEventListener('pointerdown', onPointerDown)
+      inspectionSurface?.removeEventListener('pointermove', onPointerMove)
+      inspectionSurface?.removeEventListener('pointerup', onPointerEnd)
+      inspectionSurface?.removeEventListener('pointercancel', onPointerEnd)
+      window.removeEventListener('wheel', onWheel, { capture: true })
+      window.removeEventListener('touchmove', onTouchMove, { capture: true })
+      window.removeEventListener('keydown', onKeyDown, { capture: true })
+      if (active || closing) {
+        weapon.inspection.finish()
+        frozenTriggers.forEach((trigger) => trigger.enable(false, false))
+        frozenTriggers = []
+        restoreElementStyles()
+        lightSnapshot.forEach(({ light, intensity, color }) => {
+          light.intensity = intensity
+          if (color) light.color.setRGB(color[0], color[1], color[2])
+        })
+        inspectionBackdrop.hidden = true
+        inspectionUI.hidden = true
+        inspectionUI.setAttribute('aria-hidden', 'true')
+        document.body.classList.remove('inspection-active', 'inspection-dragging')
+        delete document.body.dataset.inspectionState
+        siteShell.inert = false
+        lenis.start()
+      }
+    },
+  }
+}
 
 function createIntro(weapon) {
   const targetScale = weapon.modelPivot.scale.clone()
@@ -1159,6 +1518,7 @@ async function boot() {
       },
     })
     activeWeapon = weapon
+    inspectionController = createInspectionController(weapon)
     document.body.classList.add('webgl-ready')
     loading.setProgress(0.98)
     await fontPromise
@@ -1208,6 +1568,7 @@ if (import.meta.hot) {
     window.visualViewport?.removeEventListener('resize', scheduleResizeSynchronization)
     motionPreference.removeEventListener('change', onMotionPreferenceChange)
     activeLoader?.destroy()
+    inspectionController?.destroy()
     activeMedia?.revert()
     wielderController?.dispose()
     activeWeapon?.dispose()

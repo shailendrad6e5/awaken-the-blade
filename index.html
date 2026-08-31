@@ -234,6 +234,9 @@
           <p class="archive-label">Final / The awakened steel</p>
           <h2 id="finale-title">The blade<br /><span>is awake.</span></h2>
           <p>What was buried has been drawn again.</p>
+          <button class="button-primary finale-inspect" type="button" data-inspect-blade>
+            <span>Inspect the Blade</span><b aria-hidden="true">→</b>
+          </button>
           <div class="finale-actions">
             <button class="button-primary" type="button" data-return-sheath><span>Return it to the Sheath</span><b aria-hidden="true">↑</b></button>
             <button class="button-secondary" type="button" data-begin-again>Begin again <span aria-hidden="true">↟</span></button>
@@ -242,6 +245,31 @@
       </section>
       </main>
     </div>
+
+    <div class="inspection-backdrop" data-inspection-backdrop hidden aria-hidden="true"></div>
+    <section
+      class="inspection-ui"
+      data-inspection-ui
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="inspection-title"
+      aria-describedby="inspection-instructions"
+      aria-hidden="true"
+      hidden
+    >
+      <div class="inspection-surface" data-inspection-surface aria-hidden="true"></div>
+      <div class="inspection-heading">
+        <p class="archive-label">Artifact / Drawn steel</p>
+        <h2 id="inspection-title">The Blade</h2>
+      </div>
+      <p class="inspection-instructions" id="inspection-instructions">
+        <span>Drag to rotate</span><span>Scroll to zoom</span>
+      </p>
+      <div class="inspection-controls">
+        <button class="inspection-control" type="button" data-inspection-reset>Reset view</button>
+        <button class="inspection-control inspection-close" type="button" data-inspection-close>Close <span aria-hidden="true">×</span></button>
+      </div>
+    </section>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
