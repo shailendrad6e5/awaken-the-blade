@@ -691,7 +691,7 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
       yaw: THREE.MathUtils.degToRad(55),
       pitch: THREE.MathUtils.degToRad(18),
       zoomMin: 0.88,
-      zoomMax: 1.14,
+      zoomMax: 1.1,
     },
     refreshFrame(remeasure = this.active) {
       if (remeasure) {
@@ -723,7 +723,7 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
       inspectionCameraUp.set(0, 1, 0).applyQuaternion(inspectionCameraQuaternion)
       inspectionTargetCenter.copy(inspectionCameraPosition)
         .addScaledVector(inspectionCameraForward, inspectionAnchorDepth)
-        .addScaledVector(inspectionCameraUp, canvas.clientWidth < 720 ? 0 : 0.08)
+        .addScaledVector(inspectionCameraUp, canvas.clientWidth < 720 ? 0 : -0.08)
 
       const aspect = Math.max(canvas.clientWidth, 1) / Math.max(canvas.clientHeight, 1)
       // The fully drawn Sword is considerably wider than the in-story frame.

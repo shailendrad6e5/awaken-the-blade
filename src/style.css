@@ -218,7 +218,7 @@ h1 { margin: 20px 0 30px; font-family: 'Cormorant Garamond', serif; font-size: c
 .legacy-rule { position: absolute; left: 8vw; right: 8vw; bottom: 16%; height: 1px; background: linear-gradient(90deg, var(--steel-dark), transparent 76%); transform: scaleX(0); transform-origin: left; }
 
 /* Finale */
-.finale { position: relative; z-index: 6; min-height: 130svh; display: grid; place-items: center; overflow: hidden; background: radial-gradient(ellipse at 58% 48%, rgba(124,139,150,.055), rgba(7,7,7,.72) 54%, #070707 100%); }
+.finale { position: relative; z-index: 6; min-height: 130svh; display: grid; place-items: end center; overflow: hidden; background: radial-gradient(ellipse at 58% 48%, rgba(124,139,150,.055), rgba(7,7,7,.72) 54%, #070707 100%); }
 .finale-inner { width: min(84vw, 1080px); padding: 16vh 0; }
 .finale h2 { margin: 22px 0 30px; font-size: clamp(5rem, 11vw, 11rem); line-height: .7; letter-spacing: -.065em; }
 .finale h2 span { margin-left: 14vw; color: var(--steel-light); }
@@ -341,6 +341,113 @@ body.inspection-active { overscroll-behavior: none; user-select: none; }
 body.inspection-active .weapon-stage { z-index: 23; }
 
 :focus-visible { outline: 1px solid var(--steel-light); outline-offset: 4px; }
+
+/* Forged reticle: a decorative point and two broken arcs, never a hit target.
+   The loader remains above it. Native cursors remain the default/fallback. */
+.forged-cursor {
+  --reticle-scale: 1;
+  --reticle-x: 1;
+  --reticle-turn: -18deg;
+  --reticle-opacity: .5;
+  --point-opacity: .76;
+  --point-scale: 1;
+  --tick-opacity: 0;
+  --tick-scale: 1;
+  --idle-factor: 1;
+  --cursor-pressure: 1;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9998;
+  width: 0;
+  height: 0;
+  opacity: 1;
+  pointer-events: none !important;
+  transition: opacity 120ms ease;
+}
+.forged-cursor *, .forged-cursor::before { pointer-events: none !important; }
+.forged-cursor[data-state='hidden'] { opacity: 0; }
+.forged-cursor::before {
+  content: '';
+  position: absolute;
+  top: -1.5px;
+  left: -1.5px;
+  width: 3px;
+  height: 3px;
+  border-radius: .5px;
+  background: var(--steel-light);
+  opacity: var(--point-opacity);
+  transform: rotate(45deg) scale(var(--point-scale));
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.forged-cursor__reticle {
+  position: absolute;
+  top: -13px;
+  left: -13px;
+  width: 26px;
+  height: 26px;
+}
+.forged-cursor__reticle::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--steel);
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+  border-radius: 50%;
+  opacity: calc(var(--reticle-opacity) * var(--idle-factor));
+  transform: rotate(var(--reticle-turn)) scaleX(var(--reticle-x)) scale(calc(var(--reticle-scale) * var(--cursor-pressure)));
+  transition: transform 160ms ease, opacity 180ms ease;
+}
+.forged-cursor__reticle::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  background:
+    linear-gradient(var(--steel), var(--steel)) center top / 1px 3px,
+    linear-gradient(var(--steel), var(--steel)) center bottom / 1px 3px,
+    linear-gradient(var(--steel), var(--steel)) left center / 3px 1px,
+    linear-gradient(var(--steel), var(--steel)) right center / 3px 1px;
+  background-repeat: no-repeat;
+  opacity: calc(var(--tick-opacity) * var(--idle-factor));
+  transform: rotate(var(--reticle-turn)) scale(var(--tick-scale));
+  transition: transform 160ms ease, opacity 180ms ease;
+}
+.forged-cursor[data-state='interactive'] { --reticle-scale: 1.14; --reticle-turn: 12deg; --reticle-opacity: .76; --point-scale: .7; --point-opacity: .9; }
+.forged-cursor[data-state='blade'] { --reticle-scale: 1.04; --reticle-turn: -10deg; --reticle-opacity: .64; --tick-opacity: .35; }
+.forged-cursor[data-state='inspection'] { --reticle-scale: 1.1; --reticle-turn: -8deg; --reticle-opacity: .72; --tick-opacity: .48; }
+.forged-cursor[data-state='inspectionDragging'] { --reticle-scale: .84; --reticle-turn: 8deg; --reticle-opacity: .8; --tick-opacity: .6; --tick-scale: .72; --point-scale: 1.2; --point-opacity: .95; }
+.forged-cursor[data-state='cinematic'] { --reticle-opacity: .1; --point-opacity: .22; --point-scale: .8; }
+.forged-cursor[data-variant='rail'] { --reticle-scale: .78; --reticle-turn: -8deg; --point-scale: .6; }
+.forged-cursor[data-variant='draw'] { --reticle-scale: 1.05; --reticle-x: .88; }
+.forged-cursor[data-variant='inspect'] { --tick-opacity: .48; --reticle-turn: -8deg; }
+.forged-cursor[data-variant='return'] { --reticle-scale: .93; --reticle-turn: -24deg; }
+.forged-cursor[data-idle='true'] { --idle-factor: .45; }
+.forged-cursor[data-idle='true'][data-state='interactive'] { --idle-factor: .78; }
+.forged-cursor[data-idle='true'][data-state='cinematic'] { --point-opacity: .12; --idle-factor: .3; }
+.forged-cursor[data-pulse='true'] .forged-cursor__reticle::before { transition: opacity 180ms ease; }
+html.is-loading .forged-cursor, html.is-transitioning .forged-cursor { opacity: 0; }
+
+[data-magnetic] > span, [data-magnetic] > b {
+  translate: var(--magnetic-x, 0px) var(--magnetic-y, 0px);
+  pointer-events: none;
+}
+.button-secondary .magnetic-label, .button-secondary:hover .magnetic-label {
+  margin-left: 0;
+  transform: none;
+  transition: none;
+}
+@media (pointer: fine) and (hover: hover) {
+  html.has-forged-cursor, html.has-forged-cursor * { cursor: none !important; }
+  html.has-forged-cursor :is(input, textarea, select, [contenteditable='true']) { cursor: auto !important; }
+}
+@media (pointer: coarse), (hover: none) {
+  .forged-cursor { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .forged-cursor { --reticle-turn: 0deg !important; transition-duration: 60ms; }
+  .forged-cursor::before, .forged-cursor__reticle::before, .forged-cursor__reticle::after { transition-duration: 60ms; }
+}
 
 @media (max-width: 900px) {
   .chapter-rail { display: none; }

@@ -4,6 +4,7 @@ import Lenis from 'lenis'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { createWeaponScene } from './weapon-scene.js'
+import { createCinematicCursor } from './cinematic-cursor.js'
 
 gsap.registerPlugin(ScrollTrigger)
 // ScrollTrigger's built-in resize refresh can run while Chrome is still
@@ -1559,10 +1560,12 @@ async function boot() {
   }
 }
 
+const cursorController = createCinematicCursor()
 boot()
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
+    cursorController.destroy()
     window.clearTimeout(resizeTimer)
     window.removeEventListener('resize', scheduleResizeSynchronization)
     window.visualViewport?.removeEventListener('resize', scheduleResizeSynchronization)
