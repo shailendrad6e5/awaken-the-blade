@@ -218,7 +218,7 @@ h1 { margin: 20px 0 30px; font-family: 'Cormorant Garamond', serif; font-size: c
 .legacy-rule { position: absolute; left: 8vw; right: 8vw; bottom: 16%; height: 1px; background: linear-gradient(90deg, var(--steel-dark), transparent 76%); transform: scaleX(0); transform-origin: left; }
 
 /* Finale */
-.finale { position: relative; z-index: 6; min-height: 130svh; display: grid; place-items: center; overflow: hidden; background: radial-gradient(ellipse at 58% 48%, rgba(124,139,150,.055), rgba(7,7,7,.72) 54%, #070707 100%); }
+.finale { position: relative; z-index: 6; min-height: 130svh; display: grid; place-items: end center; overflow: hidden; background: radial-gradient(ellipse at 58% 48%, rgba(124,139,150,.055), rgba(7,7,7,.72) 54%, #070707 100%); }
 .finale-inner { width: min(84vw, 1080px); padding: 16vh 0; }
 .finale h2 { margin: 22px 0 30px; font-size: clamp(5rem, 11vw, 11rem); line-height: .7; letter-spacing: -.065em; }
 .finale h2 span { margin-left: 14vw; color: var(--steel-light); }
