@@ -359,6 +359,21 @@ function getHeroDestination(progress = 0) {
 }
 
 function setActiveChapter(chapter) {
+  // Later chapters deliberately hide the persistent Hero layers to prevent
+  // resize/refresh overlap. Restore only the layers that should be visible
+  // once reverse navigation (or Begin Again) crosses back into AWAKEN.
+  if (chapter === 'awaken' && header.dataset.chapter !== 'awaken') {
+    const heroProgress = heroTrigger
+      ? getProgressAtScroll(heroTrigger, getCurrentScrollPosition())
+      : 0
+    gsap.set([
+      '.hero-eyebrow', '.hero-copy', '.hero-actions', '.title-line > span',
+    ], { clearProps: 'opacity,visibility' })
+    gsap.set('.scroll-indicator', {
+      autoAlpha: gsap.utils.clamp(0, 1, (0.16 - heroProgress) / 0.08),
+    })
+  }
+
   if (chapter !== 'wielder') gsap.set('.weapon-stage', { autoAlpha: 1 })
 
   // Chapter timelines own their own content. Once the hero has been left,
