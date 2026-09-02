@@ -63,7 +63,15 @@ const lenis = new Lenis({
   wheelMultiplier: 0.86,
   touchMultiplier: 1.05,
 })
-const updateLenis = (time) => lenis.raf(time * 1000)
+const updateLenis = (time) => {
+  lenis.raf(time * 1000)
+  // A long reverse jump can leave delayed chapter scrubs finishing after the
+  // Hero has resumed. No later chapter owns its rig in the Hero/Draw range.
+  if (activeWeapon && heroTrigger && !inspectionController?.isActive()
+      && getCurrentScrollPosition() <= heroTrigger.end) {
+    resetChapterPresentation(activeWeapon)
+  }
+}
 lenis.on('scroll', ScrollTrigger.update)
 lenis.stop()
 gsap.ticker.add(updateLenis)
@@ -1179,6 +1187,15 @@ function createWielderController() {
   }
 }
 
+function resetChapterPresentation(weapon) {
+  weapon.chapterPivot.position.set(0, 0, 0)
+  weapon.chapterPivot.rotation.set(0, 0, 0)
+  weapon.chapterPivot.scale.setScalar(1)
+  weapon.chapterCameraRig.position.set(0, 0, 0)
+  weapon.chapterCameraRig.rotation.set(0, 0, 0)
+  weapon.chapterMatch.progress = 0
+}
+
 function createChapterExperience(weapon) {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const motion = reduced ? 0.32 : 1
@@ -1217,12 +1234,7 @@ function createChapterExperience(weapon) {
   gsap.set('.inscription-words span', { autoAlpha: 0, clipPath: 'inset(100% 0 0)' })
   gsap.set('.inscription-heading, .inscription-words, .archive-specs', { filter: 'blur(0px)' })
   gsap.set('.annotation-line i, .origin-rule, .inscription-rule, .legacy-rule', { scaleX: 0, scaleY: 0 })
-  weapon.chapterPivot.position.set(0, 0, 0)
-  weapon.chapterPivot.rotation.set(0, 0, 0)
-  weapon.chapterPivot.scale.setScalar(1)
-  weapon.chapterCameraRig.position.set(0, 0, 0)
-  weapon.chapterCameraRig.rotation.set(0, 0, 0)
-  weapon.chapterMatch.progress = 0
+  resetChapterPresentation(weapon)
   Object.assign(weapon.waveState, { opacity: 0, brightness: 0.7, amplitude: 1.7, speed: 0.2, turbulence: 0.14 })
   weapon.emberState.opacity = 0
 
