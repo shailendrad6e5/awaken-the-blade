@@ -359,21 +359,6 @@ function getHeroDestination(progress = 0) {
 }
 
 function setActiveChapter(chapter) {
-  // Later chapters deliberately hide the persistent Hero layers to prevent
-  // resize/refresh overlap. Restore only the layers that should be visible
-  // once reverse navigation (or Begin Again) crosses back into AWAKEN.
-  if (chapter === 'awaken' && header.dataset.chapter !== 'awaken') {
-    const heroProgress = heroTrigger
-      ? getProgressAtScroll(heroTrigger, getCurrentScrollPosition())
-      : 0
-    gsap.set([
-      '.hero-eyebrow', '.hero-copy', '.hero-actions', '.title-line > span',
-    ], { clearProps: 'opacity,visibility' })
-    gsap.set('.scroll-indicator', {
-      autoAlpha: gsap.utils.clamp(0, 1, (0.16 - heroProgress) / 0.08),
-    })
-  }
-
   if (chapter !== 'wielder') gsap.set('.weapon-stage', { autoAlpha: 1 })
 
   // Chapter timelines own their own content. Once the hero has been left,
@@ -898,12 +883,15 @@ function createMasterTimeline(weapon) {
   }
 
   timeline
-    .to('.scroll-indicator', { autoAlpha: 0, duration: 0.08 }, 0.08)
-    .to('.hero-eyebrow', { y: -8, autoAlpha: 0, duration: 0.22, ease: 'power1.inOut' }, 0.18)
-    .to('.hero-copy', { y: -12, autoAlpha: 0, duration: 0.28, ease: 'power1.inOut' }, 0.22)
-    .to('.hero-actions', { y: -8, autoAlpha: 0, duration: 0.24, ease: 'power1.inOut' }, 0.28)
-    .to('.title-line:first-child > span', { y: -12, autoAlpha: 0, letterSpacing: '-0.025em', duration: 0.29, ease: 'power1.inOut' }, 0.36)
-    .to('.title-line:last-child > span', { y: -18, autoAlpha: 0, letterSpacing: '-0.02em', duration: 0.27, ease: 'power1.inOut' }, 0.39)
+    // Explicit starts keep reverse playback from restoring the loader intro's
+    // transient hidden state. These initialize under the loader; the opening
+    // intro still owns its reveal once the loader exits.
+    .fromTo('.scroll-indicator', { autoAlpha: 1 }, { autoAlpha: 0, duration: 0.08, immediateRender: true, autoRevert: false }, 0.08)
+    .fromTo('.hero-eyebrow', { autoAlpha: 1 }, { y: -8, autoAlpha: 0, duration: 0.22, ease: 'power1.inOut', immediateRender: true, autoRevert: false }, 0.18)
+    .fromTo('.hero-copy', { autoAlpha: 1 }, { y: -12, autoAlpha: 0, duration: 0.28, ease: 'power1.inOut', immediateRender: true, autoRevert: false }, 0.22)
+    .fromTo('.hero-actions', { autoAlpha: 1 }, { y: -8, autoAlpha: 0, duration: 0.24, ease: 'power1.inOut', immediateRender: true, autoRevert: false }, 0.28)
+    .fromTo('.title-line:first-child > span', { autoAlpha: 1 }, { y: -12, autoAlpha: 0, letterSpacing: '-0.025em', duration: 0.29, ease: 'power1.inOut', immediateRender: true, autoRevert: false }, 0.36)
+    .fromTo('.title-line:last-child > span', { autoAlpha: 1 }, { y: -18, autoAlpha: 0, letterSpacing: '-0.02em', duration: 0.27, ease: 'power1.inOut', immediateRender: true, autoRevert: false }, 0.39)
     .to('.hero-atmosphere', { opacity: 0.82, scale: 1.12, duration: 0.64, ease: 'power1.inOut' }, 0.2)
     .to(weapon.cameraMotion, { yaw: THREE_DEGREES(4.2), pitch: THREE_DEGREES(0.65), duration: 0.68, ease: 'power1.inOut' }, 0.12)
     .to(weapon.camera.position, { z: 10.62, x: 0.08, y: 0.05, duration: 0.66, ease: 'power1.inOut' }, 0.16)
