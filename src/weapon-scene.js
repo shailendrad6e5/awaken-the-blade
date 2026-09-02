@@ -573,7 +573,10 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
   inspectionOffset.add(chapterPivot)
   inspectionOrbit.add(inspectionOffset)
   inspectionPlacement.add(inspectionOrbit)
-  scene.add(inspectionPlacement)
+  const impactPivot = new THREE.Group()
+  impactPivot.name = 'DrawImpactPresentation'
+  impactPivot.add(inspectionPlacement)
+  scene.add(impactPivot)
   modelPivot.updateMatrixWorld(true)
 
   const parentWorldOrigin = sourceParent.localToWorld(new THREE.Vector3())
@@ -980,6 +983,7 @@ export async function createWeaponScene(canvas, { onProgress = () => {} } = {}) 
     modelPivot,
     restingTransform,
     chapterPivot,
+    impactPivot,
     waveState,
     emberState,
     draw,

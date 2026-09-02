@@ -5,6 +5,7 @@ import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { createWeaponScene } from './weapon-scene.js'
 import { createCinematicCursor } from './cinematic-cursor.js'
+import { createDrawImpact } from './draw-impact.js'
 
 gsap.registerPlugin(ScrollTrigger)
 // ScrollTrigger's built-in resize refresh can run while Chrome is still
@@ -53,6 +54,7 @@ let pendingResizeAnchor
 let viewportMode = getViewportMode()
 let wielderController
 let inspectionController
+let drawImpactController
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
 
 const lenis = new Lenis({
@@ -71,6 +73,7 @@ const updateLenis = (time) => {
       && getCurrentScrollPosition() <= heroTrigger.end) {
     resetChapterPresentation(activeWeapon)
   }
+  drawImpactController?.update(activeWeapon.draw.progress, isDrawImpactEligible())
 }
 lenis.on('scroll', ScrollTrigger.update)
 lenis.stop()
@@ -227,10 +230,12 @@ async function synchronizeResize(generation) {
   ScrollTrigger.update()
   renderTimelinesAtCurrentScroll()
   pendingResizeAnchor = undefined
+  drawImpactController?.resume(activeWeapon.draw.progress)
 }
 
 function scheduleResizeSynchronization() {
   if (!activeWeapon || !experienceStarted) return
+  drawImpactController?.suspend()
   pendingResizeAnchor ??= captureScrollAnchor()
   window.clearTimeout(resizeTimer)
   const generation = ++resizeGeneration
@@ -245,6 +250,7 @@ window.visualViewport?.addEventListener('resize', scheduleResizeSynchronization,
 
 async function synchronizeMotionPreference() {
   if (!activeWeapon || !experienceStarted) return
+  drawImpactController?.suspend()
   if (inspectionController?.isActive()) {
     inspectionController.handleMotionPreferenceChange()
     return
@@ -258,6 +264,7 @@ async function synchronizeMotionPreference() {
   lenis.scrollTo(Math.min(destination, lenis.limit), { immediate: true, force: true })
   ScrollTrigger.update()
   renderTimelinesAtCurrentScroll()
+  drawImpactController?.resume(activeWeapon.draw.progress)
 }
 
 const onMotionPreferenceChange = () => { void synchronizeMotionPreference() }
@@ -449,10 +456,12 @@ drawButton.addEventListener('click', () => {
 })
 
 returnButton?.addEventListener('click', () => {
+  drawImpactController?.resetForReturn()
   lenis.scrollTo(getHeroDestination(0.035), { duration: 3.2, lock: false })
 })
 
 beginAgainButton?.addEventListener('click', () => {
+  drawImpactController?.resetForReturn()
   lenis.scrollTo(0, { duration: 2.6, lock: false })
 })
 
@@ -510,6 +519,7 @@ function createInspectionController(weapon) {
   const open = () => {
     if (active || closing || !weapon.inspection || header.dataset.chapter !== 'finale') return
 
+    drawImpactController?.suspend()
     active = true
     resizeDeferred = false
     motionDeferred = false
@@ -609,6 +619,7 @@ function createInspectionController(weapon) {
     viewportMode = nextViewportMode
     pendingResizeAnchor = undefined
     lenis.start()
+    drawImpactController?.resume(weapon.draw.progress)
   }
 
   const finishClose = async () => {
@@ -844,6 +855,18 @@ function createReducedIntro(weapon) {
   return timeline
 }
 
+function syncDrawPresentation(weapon) {
+  const reveal = gsap.utils.clamp(0, 1, (weapon.draw.progress - 0.82) / 0.06)
+    * (drawImpactController?.payoffVisibility ?? 1)
+  weapon.setExtractionLighting(weapon.draw.progress)
+  gsap.set('.blade-memory', { autoAlpha: reveal })
+  gsap.set('.blade-memory__line', {
+    clipPath: `inset(${(1 - reveal) * 105}% 0 0 0)`,
+    y: 24 * (1 - reveal),
+  })
+  gsap.set('.blade-memory__note', { autoAlpha: reveal, y: 10 * (1 - reveal) })
+}
+
 function createMasterTimeline(weapon) {
   const baseRotation = {
     x: weapon.modelPivot.rotation.x,
@@ -851,16 +874,7 @@ function createMasterTimeline(weapon) {
     z: weapon.modelPivot.rotation.z,
   }
   const baseScale = weapon.modelPivot.scale.clone()
-  const syncExtractionPresentation = () => {
-    const reveal = gsap.utils.clamp(0, 1, (weapon.draw.progress - 0.82) / 0.06)
-    weapon.setExtractionLighting(weapon.draw.progress)
-    gsap.set('.blade-memory', { autoAlpha: reveal })
-    gsap.set('.blade-memory__line', {
-      clipPath: `inset(${(1 - reveal) * 105}% 0 0 0)`,
-      y: 24 * (1 - reveal),
-    })
-    gsap.set('.blade-memory__note', { autoAlpha: reveal, y: 10 * (1 - reveal) })
-  }
+  const syncExtractionPresentation = () => syncDrawPresentation(weapon)
 
   const timeline = gsap.timeline({
     defaults: { ease: 'none' },
@@ -1194,6 +1208,12 @@ function resetChapterPresentation(weapon) {
   weapon.chapterCameraRig.position.set(0, 0, 0)
   weapon.chapterCameraRig.rotation.set(0, 0, 0)
   weapon.chapterMatch.progress = 0
+}
+
+function isDrawImpactEligible() {
+  const scroll = getCurrentScrollPosition()
+  return experienceStarted && heroTrigger && !inspectionController?.isActive()
+    && scroll >= heroTrigger.start && scroll <= heroTrigger.end
 }
 
 function createChapterExperience(weapon) {
@@ -1535,6 +1555,13 @@ async function boot() {
     })
     activeWeapon = weapon
     inspectionController = createInspectionController(weapon)
+    drawImpactController = createDrawImpact({
+      weapon,
+      motionPreference,
+      onPayoffUpdate: () => {
+        if (isDrawImpactEligible()) syncDrawPresentation(weapon)
+      },
+    })
     document.body.classList.add('webgl-ready')
     loading.setProgress(0.98)
     await fontPromise
@@ -1581,6 +1608,7 @@ boot()
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     cursorController.destroy()
+    drawImpactController?.destroy()
     window.clearTimeout(resizeTimer)
     window.removeEventListener('resize', scheduleResizeSynchronization)
     window.visualViewport?.removeEventListener('resize', scheduleResizeSynchronization)

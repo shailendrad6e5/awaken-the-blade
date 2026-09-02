@@ -46,8 +46,8 @@ button { color: inherit; }
 
 .blade-sequence { min-height: 6400px; background: var(--bg-main); }
 .hero { position: relative; min-height: 100svh; overflow: hidden; isolation: isolate; background: radial-gradient(ellipse at 66% 42%, rgba(142,155,166,.075), transparent 31%), linear-gradient(118deg, #070707 0%, #090a0b 55%, #060606 100%); }
-.hero::before { content: ''; position: absolute; inset: 0; z-index: 5; background: radial-gradient(ellipse at 58% 43%, transparent 10%, rgba(7,7,7,.08) 42%, rgba(7,7,7,.7) 100%); pointer-events: none; }
-.hero::after { content: ''; position: absolute; inset: auto 0 0; z-index: 5; height: 34%; background: linear-gradient(to bottom, transparent, rgba(7,7,7,.9)); pointer-events: none; }
+.hero-impact::before { content: ''; position: absolute; inset: 0; z-index: 5; background: radial-gradient(ellipse at 58% 43%, transparent 10%, rgba(7,7,7,.08) 42%, rgba(7,7,7,.7) 100%); pointer-events: none; }
+.hero-impact::after { content: ''; position: absolute; inset: auto 0 0; z-index: 5; height: 34%; background: linear-gradient(to bottom, transparent, rgba(7,7,7,.9)); pointer-events: none; }
 .hero-content { position: absolute; top: 49%; left: clamp(28px, 6.2vw, 102px); z-index: 3; width: min(51vw, 720px); transform: translateY(-48%); }
 .eyebrow { margin: 0; color: var(--antique-metal); font-size: clamp(0.58rem, 0.65vw, 0.7rem); font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; }
 h1 { margin: 20px 0 30px; font-family: 'Cormorant Garamond', serif; font-size: clamp(4rem, 8.25vw, 8.25rem); font-weight: 500; line-height: 0.82; letter-spacing: -0.055em; text-transform: uppercase; }
@@ -70,6 +70,9 @@ h1 { margin: 20px 0 30px; font-family: 'Cormorant Garamond', serif; font-size: c
 .button-secondary:hover span { transform: translateX(4px); }
 
 .weapon-stage { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
+.hero-impact { position: absolute; inset: 0; }
+.hero-impact, .weapon-stage { transform: translate3d(var(--draw-impact-x, 0px), var(--draw-impact-y, 0px), 0) rotate(var(--draw-impact-roll, 0deg)); transform-origin: 50% 50%; }
+.weapon-stage::after { content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: calc(var(--draw-impact-light, 0) * .1); background: radial-gradient(ellipse at 61% 43%, rgba(196,218,235,.9), rgba(134,169,194,.3) 35%, transparent 65%); }
 .weapon-stage::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 61% 47%, rgba(152,166,177,.045), transparent 29%), linear-gradient(90deg, transparent 44%, rgba(112,125,136,.025) 65%, transparent 88%); }
 .weapon-canvas { position: relative; z-index: 2; display: block; width: 100%; height: 100%; opacity: 0; transition: opacity 900ms ease; }
 .webgl-ready .weapon-canvas { opacity: 1; }
